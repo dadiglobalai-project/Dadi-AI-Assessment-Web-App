@@ -1,1 +1,1 @@
-# Dadi-AI-Assessment-Web-App
+Dadi AI Assessment is web application for an online AI assessment system with two separate portals: Admin Portal and Applicant Portal. The purpose of the system is to allow applicants to take a timed AI assessment online while recording their screen. The admin should be able to create and upload assessment questions, and those questions should automatically appear in the applicant portal. After the applicant finishes the assessment, the screen recording and submitted answers must be saved and viewable in the admin portal for review.
