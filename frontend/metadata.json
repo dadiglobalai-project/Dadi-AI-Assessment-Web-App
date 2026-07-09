@@ -1,0 +1,6 @@
+{
+  "name": "AI Assessment System",
+  "description": "An online timed AI assessment portal with automated screen recording, instant auto-save, and an admin dashboard for playback review and scoring.",
+  "requestFramePermissions": ["display-capture"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

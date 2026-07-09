@@ -1,0 +1,449 @@
+{
+  "users": [
+    {
+      "id": "admin-1",
+      "name": "Admin",
+      "email": "admin@assessment.com",
+      "password": "admin123",
+      "role": "ADMIN",
+      "created_at": "2026-07-07T00:23:03.762Z"
+    },
+    {
+      "id": "applicant-1",
+      "name": "Alex Rivera",
+      "email": "alex@assessment.com",
+      "password": "alex123",
+      "role": "APPLICANT",
+      "created_at": "2026-07-07T00:23:03.762Z"
+    },
+    {
+      "id": "applicant-2",
+      "name": "Sam Chen",
+      "email": "sam@assessment.com",
+      "password": "sam123",
+      "role": "APPLICANT",
+      "created_at": "2026-07-07T00:23:03.762Z"
+    },
+    {
+      "id": "user-1783383834915",
+      "name": "harvey",
+      "email": "jiji@gmail.com",
+      "password": "123456",
+      "role": "APPLICANT",
+      "applied_role_id": "role-esl",
+      "created_at": "2026-07-07T00:23:54.915Z"
+    },
+    {
+      "id": "user-1783385731758",
+      "name": "harvey",
+      "email": "vergara@gmail.com",
+      "password": "1234",
+      "role": "APPLICANT",
+      "applied_role_id": "role-esl",
+      "created_at": "2026-07-07T00:55:31.758Z"
+    },
+    {
+      "id": "user-1783387346532",
+      "name": "harvey",
+      "email": "verga@gmail.com",
+      "password": "123",
+      "role": "APPLICANT",
+      "applied_role_id": "role-esl",
+      "created_at": "2026-07-07T01:22:26.532Z"
+    },
+    {
+      "id": "user-1783389455796",
+      "name": "Jew",
+      "email": "asdfdsf@gmail.com",
+      "password": "123",
+      "role": "APPLICANT",
+      "applied_role_id": "role-coord",
+      "created_at": "2026-07-07T01:57:35.796Z"
+    },
+    {
+      "id": "user-1783390653203",
+      "name": "Mark",
+      "email": "mark@gmail.com",
+      "password": "123",
+      "role": "APPLICANT",
+      "applied_role_id": "role-coord",
+      "created_at": "2026-07-07T02:17:33.203Z"
+    },
+    {
+      "id": "user-1783390797318",
+      "name": "Jew",
+      "email": "pitty@gmail.com",
+      "password": "123",
+      "role": "APPLICANT",
+      "applied_role_id": "role-esl",
+      "created_at": "2026-07-07T02:19:57.318Z"
+    },
+    {
+      "id": "user-1783392593070",
+      "name": "Chitty",
+      "email": "chitty@gmail.com",
+      "password": "123",
+      "role": "APPLICANT",
+      "applied_role_id": "role-esl",
+      "created_at": "2026-07-07T02:49:53.070Z"
+    },
+    {
+      "id": "user-1783404829939",
+      "name": "eala",
+      "email": "eala@gmail.com",
+      "password": "1234",
+      "role": "APPLICANT",
+      "applied_role_id": "role-esl",
+      "created_at": "2026-07-07T06:13:49.939Z"
+    },
+    {
+      "id": "user-1783405723398",
+      "name": "mikky",
+      "email": "mikky@gmail.com",
+      "password": "1234",
+      "role": "APPLICANT",
+      "applied_role_id": "role-esl",
+      "created_at": "2026-07-07T06:28:43.398Z"
+    },
+    {
+      "id": "user-1783406481237",
+      "name": "wer",
+      "email": "wer@gmail.com",
+      "password": "123",
+      "role": "APPLICANT",
+      "applied_role_id": "role-esl",
+      "created_at": "2026-07-07T06:41:21.237Z"
+    },
+    {
+      "id": "user-1783407235339",
+      "name": "fed",
+      "email": "fed@gmail.com",
+      "password": "1234",
+      "role": "APPLICANT",
+      "applied_role_id": "role-esl",
+      "created_at": "2026-07-07T06:53:55.339Z"
+    },
+    {
+      "id": "user-1783407813012",
+      "name": "alexe",
+      "email": "alexe@gmail.com",
+      "password": "123",
+      "role": "APPLICANT",
+      "applied_role_id": "role-esl",
+      "created_at": "2026-07-07T07:03:33.012Z"
+    },
+    {
+      "id": "user-1783489800073",
+      "name": "jiwie",
+      "email": "jiwie@gmail.com",
+      "password": "123",
+      "role": "APPLICANT",
+      "applied_role_id": "role-esl",
+      "created_at": "2026-07-08T05:50:00.073Z"
+    },
+    {
+      "id": "user-1783490687688",
+      "name": "Jiwie",
+      "email": "Jiw@gmail.com",
+      "password": "123",
+      "role": "APPLICANT",
+      "applied_role_id": "role-esl",
+      "created_at": "2026-07-08T06:04:47.688Z"
+    }
+  ],
+  "roles": [
+    {
+      "id": "role-esl",
+      "role_name": "ESL Teacher",
+      "description": "English as a Second Language Educator responsible for delivering interactive virtual English classes.",
+      "status": "ACTIVE",
+      "created_at": "2026-07-07T00:23:03.762Z"
+    },
+    {
+      "id": "role-coord",
+      "role_name": "Business Coordinator",
+      "description": "Coordinates commercial relations, client queries, schedules, and operations.",
+      "status": "ACTIVE",
+      "created_at": "2026-07-07T00:23:03.762Z"
+    },
+    {
+      "id": "role-trainer",
+      "role_name": "English Course Trainer",
+      "description": "Professional coaching, corporate training, speaking focus, curriculum execution.",
+      "status": "ACTIVE",
+      "created_at": "2026-07-07T00:23:03.762Z"
+    },
+    {
+      "id": "role-dev",
+      "role_name": "Curriculum Developer",
+      "description": "Develops learning programs, materials, online tests, and syllabus structure.",
+      "status": "ACTIVE",
+      "created_at": "2026-07-07T00:23:03.762Z"
+    }
+  ],
+  "assessments": [
+    {
+      "id": "assess-1",
+      "title": "AI & Large Language Model Core Competencies",
+      "instructions": "This timed assessment evaluates your foundational understanding of Large Language Models, prompt engineering, and agentic workflows. You are required to enable screen recording to begin. Do not navigate away from this browser window. Auto-save is active.",
+      "time_limit_minutes": 15,
+      "status": "ACTIVE",
+      "created_by": "admin-1",
+      "created_at": "2026-07-07T00:23:03.762Z",
+      "role_id": "role-coord"
+    },
+    {
+      "id": "assess-1783384542305",
+      "title": "ESL teacher",
+      "instructions": "Welcome to the AI Skills Assessment.\n\nThis assessment is designed to evaluate how effectively you use Artificial Intelligence (AI) to support your work as an ESL teacher. We are not assessing whether you can memorize prompts or rely entirely on AI. Instead, we want to understand how you communicate with AI, evaluate its responses, and apply the results to real teaching scenarios.\n\nInstructions\n\n1. You may use any AI tool during this assessment (e.g., ChatGPT).\n\n2. You are required to record your conversation with the AI tool so we can assess your prompting skills and how you use AI to complete teaching-related tasks.\n\n3. Read each question carefully before answering.\n\n4. For each question, please complete the following:\n   - Show the prompt you entered into the AI tool.\n   - Present the AI-generated response.\n   - Explain whether you would accept the response as is or modify it.\n   - If you make changes, explain what you changed and why.\n\n5. Do not copy AI responses without reviewing them. We are evaluating your ability to think critically and improve AI-generated content when necessary.\n\n6. Think aloud while answering. Explain your reasoning and decision-making process as if you were demonstrating your workflow to another teacher.\n\n7. There is no single correct prompt. We are looking for prompts that are:\n   - Clear\n   - Specific\n   - Well-structured\n   - Appropriate for the given teaching scenario\n\n8. Your answers should reflect your own teaching experience, judgment, and ability to use AI effectively.\n\n## Evaluation Criteria\n\nYour performance will be evaluated based on the following:\n\n- Prompt Engineering\n  - Ability to write clear, detailed, and effective prompts.\n\n- AI Literacy\n  - Ability to use AI tools appropriately for teaching-related tasks.\n\n- Critical Thinking\n  - Ability to evaluate AI-generated content, identify issues, and make necessary improvements.\n\n- Teaching Judgment\n  - Ability to ensure AI-generated materials are accurate, age-appropriate, and suitable for ESL learners.\n\n- Communication\n  - Ability to clearly explain your reasoning and workflow.\n\n## Important Reminder\n\nAI is a tool that assists teachers—it does not replace professional teaching expertise. We value applicants who can use AI responsibly, verify its outputs, and adapt AI-generated content to meet the needs of their students.\n\nGood luck!",
+      "time_limit_minutes": 60,
+      "status": "ACTIVE",
+      "created_by": "admin-1",
+      "role_id": "role-esl",
+      "created_at": "2026-07-07T00:35:42.305Z"
+    }
+  ],
+  "questions": [
+    {
+      "id": "q-1",
+      "assessment_id": "assess-1",
+      "question_text": "Explain the difference between temperature and top_p sampling in LLM generation, and when you would adjust each.",
+      "question_type": "TEXT",
+      "points": 15,
+      "order_number": 1,
+      "created_at": "2026-07-07T00:23:03.762Z"
+    },
+    {
+      "id": "q-2",
+      "assessment_id": "assess-1",
+      "question_text": "Which of the following describes the 'Hallucination' phenomenon in LLMs?",
+      "question_type": "MULTIPLE_CHOICE",
+      "options": [
+        "The model producing grammatically incorrect language",
+        "The model generating factually incorrect but highly confident-sounding assertions",
+        "The model running out of context window tokens",
+        "The model refusing to answer based on safety guardrails"
+      ],
+      "points": 10,
+      "order_number": 2,
+      "created_at": "2026-07-07T00:23:03.762Z"
+    },
+    {
+      "id": "q-3",
+      "assessment_id": "assess-1",
+      "question_text": "Implement a simple Python retry decorator function with exponential backoff for handling Gemini API rate limit errors (429 status code). Make sure it catches requests.exceptions.RequestException or a generic Exception.",
+      "question_type": "CODE",
+      "points": 25,
+      "order_number": 3,
+      "created_at": "2026-07-07T00:23:03.762Z"
+    },
+    {
+      "id": "q-1783384774453",
+      "assessment_id": "assess-1783384542305",
+      "role_id": "role-esl",
+      "question_text": "<b>Create a Vocabulary Lesson</b>\n<br><br>Scenario:\nYou need to teach the word \"Responsible\" to a group of 8-year-old beginner ESL students.\n<br><br>Task:\nUsing ChatGPT, create a prompt that asks the AI to generate:\n<br>• A simple definition\n<br>• Three example sentences\n<br>• A short classroom activity\n<br>• A 5-question quiz\n<br><br>After receiving the AI's response, briefly explain why you wrote your prompt that way and whether you would modify the AI's output before using it in class.\n<br><br>What we assess:\n<br>• Prompt clarity\n<br>• Ability to provide context\n<br>• Critical evaluation of AI output",
+      "question_type": "TEXT",
+      "points": 20,
+      "order_number": 1,
+      "created_at": "2026-07-07T00:39:34.453Z"
+    },
+    {
+      "id": "q-1783387233694",
+      "assessment_id": "assess-1783384542305",
+      "role_id": "role-esl",
+      "question_text": "<h3 data-section-id=\"bg8ul5\" data-start=\"897\" data-end=\"937\" class=\"PDq2pG_selectionAnchorContainer\"><span role=\"text\"><strong data-start=\"901\" data-end=\"937\">Improve an AI Prompt</strong></span><span aria-hidden=\"true\" class=\"PDq2pG_selectionAnchor\"></span></h3>\n<p data-start=\"938\" data-end=\"971\">Below is a poorly written prompt:</p>\n<blockquote data-start=\"973\" data-end=\"1003\">\n<p data-start=\"975\" data-end=\"1003\">\"Make me an English lesson.\"</p>\n</blockquote>\n<p data-start=\"1005\" data-end=\"1080\"><strong data-start=\"1005\" data-end=\"1014\">Task:</strong><br>\nRewrite this prompt so that AI produces a more useful lesson for:</p>\n<ul data-start=\"1081\" data-end=\"1215\">\n<li data-section-id=\"11qaivt\" data-start=\"1081\" data-end=\"1108\">\nIntermediate ESL students\n</li>\n<li data-section-id=\"1c0nf57\" data-start=\"1109\" data-end=\"1133\">\n45-minute online class\n</li>\n<li data-section-id=\"4kob5g\" data-start=\"1134\" data-end=\"1172\">\nTopic: Ordering food in a restaurant\n</li>\n<li data-section-id=\"428ut2\" data-start=\"1173\" data-end=\"1215\">\nInclude speaking activities and homework\n</li>\n</ul>\n<p data-start=\"1217\" data-end=\"1252\">Explain what improvements you made.</p>\n<p data-start=\"1254\" data-end=\"1273\"><strong data-start=\"1254\" data-end=\"1273\">What we assess:</strong></p>\n<ul data-start=\"1274\" data-end=\"1353\">\n<li data-section-id=\"19xq8xh\" data-start=\"1274\" data-end=\"1294\">\nPrompt engineering\n</li>\n<li data-section-id=\"1jl16if\" data-start=\"1295\" data-end=\"1353\">\nAbility to specify audience, objectives, and constraints</li></ul>",
+      "question_type": "TEXT",
+      "points": 10,
+      "order_number": 2,
+      "created_at": "2026-07-07T01:20:33.694Z"
+    },
+    {
+      "id": "q-1783387258309",
+      "assessment_id": "assess-1783384542305",
+      "role_id": "role-esl",
+      "question_text": "<h3 data-section-id=\"1auwga0\" data-start=\"1360\" data-end=\"1397\" class=\"PDq2pG_selectionAnchorContainer\"><span role=\"text\"><strong data-start=\"1364\" data-end=\"1397\">Correct AI Output</strong></span><span aria-hidden=\"true\" class=\"PDq2pG_selectionAnchor\"></span></h3>\n<p data-start=\"1398\" data-end=\"1484\">You asked AI to create grammar examples for beginners, and it generated this sentence:</p>\n<blockquote data-start=\"1486\" data-end=\"1545\">\n<p data-start=\"1488\" data-end=\"1545\">\"Had I known your arrival, I would have prepared dinner.\"</p>\n</blockquote>\n<p data-start=\"1547\" data-end=\"1689\"><strong data-start=\"1547\" data-end=\"1556\">Task:</strong><br>\nExplain why this sentence is not suitable for beginner learners.<br>\nThen write the prompt you would use to ask AI for simpler examples.</p>\n<p data-start=\"1691\" data-end=\"1710\"><strong data-start=\"1691\" data-end=\"1710\">What we assess:</strong></p>\n<ul data-start=\"1711\" data-end=\"1785\">\n<li data-section-id=\"1vdgtte\" data-start=\"1711\" data-end=\"1745\">\nAbility to evaluate AI responses\n</li>\n<li data-section-id=\"16ub0yl\" data-start=\"1746\" data-end=\"1765\">\nTeaching judgment\n</li>\n<li data-section-id=\"1kx7sfh\" data-start=\"1766\" data-end=\"1785\">\nPrompt refinement</li></ul>",
+      "question_type": "TEXT",
+      "points": 10,
+      "order_number": 3,
+      "created_at": "2026-07-07T01:20:58.309Z"
+    },
+    {
+      "id": "q-1783559786873",
+      "assessment_id": "assess-1783384542305",
+      "role_id": "role-esl",
+      "question_text": "rtyghghfghdfgh",
+      "question_type": "TEXT",
+      "points": 10,
+      "order_number": 4,
+      "created_at": "2026-07-09T01:16:26.873Z"
+    }
+  ],
+  "applicant_assessments": [
+    {
+      "id": "aa-1783385820064",
+      "applicant_id": "user-1783385731758",
+      "assessment_id": "assess-1783384542305",
+      "status": "SUBMITTED",
+      "start_time": "2026-07-07T08:49:09.897+00:00",
+      "end_time": "2026-07-07T09:49:09.897+00:00",
+      "submitted_at": "2026-07-08T02:26:09.874Z",
+      "created_at": "2026-07-08T02:06:06.186565+00:00",
+      "updated_at": "2026-07-08T02:06:06.186565+00:00"
+    },
+    {
+      "id": "aa-1783392627554",
+      "applicant_id": "user-1783392593070",
+      "assessment_id": "assess-1783384542305",
+      "status": "SUBMITTED",
+      "start_time": "2026-07-07T02:50:27.554Z",
+      "end_time": "2026-07-07T03:50:27.554Z",
+      "submitted_at": "2026-07-07T02:51:09.464Z"
+    },
+    {
+      "id": "aa-1783404858860",
+      "applicant_id": "user-1783404829939",
+      "assessment_id": "assess-1783384542305",
+      "status": "SUBMITTED",
+      "start_time": "2026-07-07T06:14:18.860Z",
+      "end_time": "2026-07-07T07:14:18.860Z",
+      "submitted_at": "2026-07-07T06:28:20.573Z"
+    },
+    {
+      "id": "aa-1783405742504",
+      "applicant_id": "user-1783405723398",
+      "assessment_id": "assess-1783384542305",
+      "status": "SUBMITTED",
+      "start_time": "2026-07-07T06:29:02.504Z",
+      "end_time": "2026-07-07T07:29:02.504Z",
+      "submitted_at": "2026-07-07T06:41:05.054Z"
+    },
+    {
+      "id": "aa-1783407823815",
+      "applicant_id": "user-1783407813012",
+      "assessment_id": "assess-1783384542305",
+      "status": "SUBMITTED",
+      "start_time": "2026-07-07T07:03:43.815Z",
+      "end_time": "2026-07-07T08:03:43.815Z",
+      "submitted_at": "2026-07-07T07:04:27.939Z"
+    },
+    {
+      "id": "aa-1783475836583",
+      "applicant_id": "user-1783390797318",
+      "assessment_id": "assess-1783384542305",
+      "status": "IN_PROGRESS",
+      "start_time": "2026-07-08T01:57:18.760Z",
+      "end_time": "2026-07-08T02:57:18.760Z"
+    },
+    {
+      "id": "aa-1783476406356",
+      "applicant_id": "user-1783390797318",
+      "assessment_id": "assess-1783384542305",
+      "status": "SUBMITTED",
+      "start_time": "2026-07-08T02:06:45.824+00:00",
+      "end_time": "2026-07-08T03:06:45.824+00:00",
+      "submitted_at": "2026-07-08T02:28:20.985Z",
+      "created_at": "2026-07-08T02:06:45.824+00:00",
+      "updated_at": "2026-07-08T02:06:45.824+00:00"
+    }
+  ],
+  "answers": [
+    {
+      "id": "ans-1783404922936-u6f71",
+      "applicant_assessment_id": "aa-1783404858860",
+      "question_id": "q-1783384774453",
+      "answer_text": "fdg dfgfd g fdgf dgfdg ",
+      "created_at": "2026-07-07T06:15:22.939Z",
+      "updated_at": "2026-07-07T06:16:28.618Z"
+    },
+    {
+      "id": "ans-1783405753866-j0c0l",
+      "applicant_assessment_id": "aa-1783405742504",
+      "question_id": "q-1783384774453",
+      "answer_text": "dfg gdfgdfg d ",
+      "created_at": "2026-07-07T06:29:13.868Z",
+      "updated_at": "2026-07-07T06:29:19.706Z"
+    },
+    {
+      "id": "ans-1783407831729-773ow",
+      "applicant_assessment_id": "aa-1783407823815",
+      "question_id": "q-1783384774453",
+      "answer_text": "adsf dsf dsfad df dfdf fds fds fdfdfdsfdsfdf",
+      "created_at": "2026-07-07T07:03:51.732Z",
+      "updated_at": "2026-07-07T07:03:59.063Z"
+    },
+    {
+      "id": "ans-1783407850979-vlgog",
+      "applicant_assessment_id": "aa-1783407823815",
+      "question_id": "q-1783387233694",
+      "answer_text": "asdfds fdsfdsf",
+      "created_at": "2026-07-07T07:04:10.981Z",
+      "updated_at": "2026-07-07T07:04:10.981Z"
+    },
+    {
+      "id": "ans-1783407854878-5dxfu",
+      "applicant_assessment_id": "aa-1783407823815",
+      "question_id": "q-1783387258309",
+      "answer_text": "adf ewre2rrdf d",
+      "created_at": "2026-07-07T07:04:14.884Z",
+      "updated_at": "2026-07-07T07:04:14.884Z"
+    }
+  ],
+  "recordings": [
+    {
+      "id": "rec-1783385860138",
+      "applicant_assessment_id": "aa-1783385820064",
+      "file_name": "recording-1783385860115-dh98f9w1c.webm",
+      "file_url": "/uploads/recording-1783385860115-dh98f9w1c.webm",
+      "file_size": 2521244,
+      "duration": 38,
+      "uploaded_at": "2026-07-07T00:57:40.138Z"
+    },
+    {
+      "id": "rec-1783392670725",
+      "applicant_assessment_id": "aa-1783392627554",
+      "file_name": "recording-1783392670718-dfzjxsg03.webm",
+      "file_url": "/uploads/recording-1783392670718-dfzjxsg03.webm",
+      "file_size": 117954,
+      "duration": 0,
+      "uploaded_at": "2026-07-07T02:51:10.725Z"
+    },
+    {
+      "id": "rec-1783407869008",
+      "applicant_assessment_id": "aa-1783407823815",
+      "file_name": "recording-1783407868998-w57d58uvj.webm",
+      "file_url": "/uploads/recording-1783407868998-w57d58uvj.webm",
+      "file_size": 241870,
+      "duration": 43,
+      "uploaded_at": "2026-07-07T07:04:29.008Z"
+    },
+    {
+      "id": "rec-1783480091680",
+      "applicant_assessment_id": "aa-1783476406356",
+      "file_name": "recording-1783480088673-3cjyn2pos.mp4",
+      "file_url": "/uploads/recording-1783480088673-3cjyn2pos.mp4",
+      "file_size": 2457552,
+      "duration": 30,
+      "uploaded_at": "2026-07-08T03:08:11.683Z"
+    }
+  ],
+  "reviews": [
+    {
+      "id": "rev-1783385885110",
+      "applicant_assessment_id": "aa-1783385820064",
+      "score": 0,
+      "remarks": "ghjhgjghj",
+      "status": "REVIEWED",
+      "reviewed_by": "admin-1",
+      "reviewed_at": "2026-07-07T00:58:05.110Z"
+    },
+    {
+      "id": "rev-1783481060909",
+      "applicant_assessment_id": "aa-1783476406356",
+      "score": 0,
+      "remarks": "No answers. Invalid",
+      "status": "REVIEWED",
+      "reviewed_by": "admin-1",
+      "reviewed_at": "2026-07-08T03:24:20.909Z"
+    }
+  ]
+}
