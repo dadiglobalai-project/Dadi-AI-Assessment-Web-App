@@ -1,5 +1,16 @@
 import path from "path";
-import { supabase } from "../config/supabase";
+import {
+  ai,
+  Type,
+  checkEmailExists,
+  dbHelper,
+  errorResponse,
+  fetchSupabaseRowsByColumn,
+  groupRowsByColumn,
+  mapRowsById,
+  successResponse,
+  supabase
+} from "./core.service";
 
 const RECORDINGS_BUCKET = "recordings";
 
@@ -105,4 +116,145 @@ export const deleteRecordingsFromStorage = async (storagePaths: string[]) => {
     bucket: RECORDINGS_BUCKET,
     storagePaths: paths
   });
+};
+
+type ServiceRequest = {
+  body: any;
+  params: Record<string, any>;
+  query: Record<string, any>;
+  file?: any;
+};
+
+type ServiceResult = {
+  status: number;
+  body: any;
+};
+
+const createServiceResponder = () => {
+  let result: ServiceResult | null = null;
+  const res = {
+    status(code: number) {
+      return {
+        json(body: any) {
+          result = { status: code, body };
+          return result;
+        }
+      };
+    },
+    json(body: any) {
+      result = { status: 200, body };
+      return result;
+    }
+  };
+
+  return {
+    res,
+    getResult() {
+      return result ?? { status: 204, body: null };
+    }
+  };
+};
+
+export const uploadApplicantRecordingService = async ({ body, params, query: requestQuery, file }: ServiceRequest): Promise<ServiceResult> => {
+  const req = { body, params, query: requestQuery, file };
+  const { res, getResult } = createServiceResponder();
+
+  const { applicantAssessmentId, duration } = req.body;
+  if (!applicantAssessmentId || !req.file) {
+    return errorResponse(res, "applicantAssessmentId and video file are required");
+  }
+
+  const record = await dbHelper.getApplicantAssessmentById(applicantAssessmentId);
+  if (!record) {
+    return errorResponse(res, "Assessment record not found for this recording", 404);
+  }
+
+  const fileName = createRecordingFileName(req.file.originalname);
+  let storagePath: string;
+
+  try {
+    storagePath = await uploadRecordingToStorage({
+      applicantAssessmentId,
+      fileName,
+      buffer: req.file.buffer,
+      contentType: req.file.mimetype
+    });
+  } catch (err) {
+    console.error("Recording upload to Supabase Storage failed:", {
+      applicantAssessmentId,
+      originalName: req.file.originalname,
+      error: err
+    });
+    return errorResponse(res, "Failed to upload recording", 500);
+  }
+
+  const recording = {
+    id: `rec-${Date.now()}`,
+    applicant_assessment_id: applicantAssessmentId,
+    file_name: fileName,
+    file_url: storagePath,
+    file_size: req.file.size,
+    duration: duration ? Number(duration) : 0,
+    uploaded_at: new Date().toISOString()
+  };
+
+  try {
+    await dbHelper.saveRecording(recording);
+    successResponse(res, recording, "Recording uploaded and saved successfully!");
+  } catch (err) {
+    console.error("Recording upload metadata save failed:", {
+      applicantAssessmentId,
+      fileName,
+      error: err
+    });
+    errorResponse(res, "Failed to save recording metadata", 500);
+  }
+
+  return getResult();
+};
+
+export const getRecordingSignedUrlService = async ({ body, params, query: requestQuery, file }: ServiceRequest): Promise<ServiceResult> => {
+  const req = { body, params, query: requestQuery, file };
+  const { res, getResult } = createServiceResponder();
+
+  const { recordingId } = req.params;
+
+  try {
+    const { data: recording, error } = await supabase
+      .from("recordings")
+      .select("*")
+      .eq("id", recordingId)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Supabase recording fetch for signed URL failed:", {
+        recordingId,
+        error
+      });
+      return errorResponse(res, "Failed to load recording", 500);
+    }
+
+    if (!recording) {
+      return errorResponse(res, "Recording not found", 404);
+    }
+
+    if (!recording.file_url) {
+      console.error("Recording is missing Supabase Storage path:", {
+        recordingId,
+        recording
+      });
+      return errorResponse(res, "Recording file path is missing", 500);
+    }
+
+    const signedUrl = await createRecordingSignedUrl(recording.file_url);
+    successResponse(res, { signedUrl });
+  } catch (err) {
+    console.error("Recording signed URL endpoint failed:", {
+      recordingId,
+      error: err
+    });
+    errorResponse(res, "Failed to generate recording URL", 500);
+  }
+
+  return getResult();
 };
