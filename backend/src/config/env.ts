@@ -1,14 +1,15 @@
-import path from "path";
-import { fileURLToPath } from "url";
 import dotenv from "dotenv";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "../../..");
+import path from "path";
+import fs from "fs";
 
 export const loadEnv = () => {
-  dotenv.config();
-  dotenv.config({ path: path.join(repoRoot, ".env") });
-  dotenv.config({ path: path.join(repoRoot, "backend", ".env") });
-  dotenv.config({ path: path.join(repoRoot, "frontend", ".env") });
+  // Load local backend .env during development
+  const backendEnv = path.join(process.cwd(), ".env");
+
+  if (fs.existsSync(backendEnv)) {
+    dotenv.config({ path: backendEnv });
+  } else {
+    // On Render, environment variables come from the dashboard
+    dotenv.config();
+  }
 };
