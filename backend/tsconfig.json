@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "allowJs": true,
+    "esModuleInterop": true,
+    "strict": false,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "*": [
+        "../frontend/node_modules/*",
+        "./src/*"
+      ]
+    },
+    "typeRoots": [
+      "../frontend/node_modules/@types",
+      "./src/types"
+    ]
+  },
+  "include": ["src/**/*.ts"]
+}
