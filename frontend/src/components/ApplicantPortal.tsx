@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { User } from '../types';
 import { getSafeFormattedHtml } from '../utils/richText';
+import { apiRequest } from '../config/api';
 
 interface ApplicantPortalProps {
   applicantUser: User;
@@ -92,8 +93,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
   const fetchAssessmentData = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/applicant/assessment?applicantId=${applicantUser.id}`);
-      const data = await res.json();
+      const data: any = await apiRequest(`/api/applicant/assessment?applicantId=${applicantUser.id}`);
       
       if (data.success) {
         const incomingStatusRecord = data.data.statusRecord ?? null;
@@ -239,15 +239,13 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
 
     try {
       setStartingAssessment(true);
-      const res = await fetch('/api/applicant/assessment/start', {
+      const data: any = await apiRequest('/api/applicant/assessment/start', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           applicantId: applicantUser.id,
           assessmentId: assessment.id
         })
       });
-      const data = await res.json();
       
       if (data.success) {
         const recorderStarted = startMediaRecorder(screenStream);
@@ -255,8 +253,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
           return;
         }
         setStatusRecord(data.data);
-        const refreshedRes = await fetch(`/api/applicant/assessment?applicantId=${applicantUser.id}`);
-        const refreshedData = await refreshedRes.json();
+        const refreshedData: any = await apiRequest(`/api/applicant/assessment?applicantId=${applicantUser.id}`);
         if (refreshedData.success) {
           setAssessment(refreshedData.data.assessment);
           setQuestions(refreshedData.data.questions);
@@ -394,21 +391,14 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
     if (!statusRecord) return;
 
     try {
-      const res = await fetch('/api/applicant/answers/save', {
+      const data: any = await apiRequest('/api/applicant/answers/save', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           applicantAssessmentId: statusRecord.id,
           questionId,
           answerText: text
         })
       });
-
-      if (!res.ok) {
-        throw new Error(`HTTP error ${res.status}`);
-      }
-
-      const data = await res.json();
 
       if (data.success) {
         setAutoSaveStatus('saved');
@@ -487,15 +477,13 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       await flushCurrentAnswersToBackend();
 
       // Submit assessment status before stopping/finalizing recording.
-      const submitRes = await fetch('/api/applicant/assessment/submit', {
+      const submitResult: any = await apiRequest('/api/applicant/assessment/submit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           applicantAssessmentId: statusRecord.id,
           status: finalStatus
         })
       });
-      const submitResult = await submitRes.json();
       if (!submitResult.success) {
         blockSubmitForMissingAnswers(
           submitResult.missingQuestionIds || [],
@@ -541,11 +529,10 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
         formData.append('applicantAssessmentId', statusRecord.id);
         formData.append('duration', recordingDurationSeconds.toString());
 
-        const uploadRes = await fetch('/api/applicant/recording/upload', {
+        const uploadResult: any = await apiRequest('/api/applicant/recording/upload', {
           method: 'POST',
           body: formData
         });
-        const uploadResult = await uploadRes.json();
         if (!uploadResult.success) {
           console.error("Recording upload failure:", uploadResult.message);
         }

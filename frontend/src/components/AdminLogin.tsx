@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ShieldCheck, Lock, Mail, ChevronRight, AlertCircle, Loader2 } from 'lucide-react';
 import { User } from '../types';
+import { apiRequest } from '../config/api';
 
 interface AdminLoginProps {
   onLoginSuccess: (user: User) => void;
@@ -18,13 +19,11 @@ export default function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const result: any = await apiRequest('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, requiredRole: 'ADMIN' })
       });
-      const result = await res.json();
-      if (!res.ok || !result.success) {
+      if (!result.success) {
         throw new Error(result.message || 'Authentication failed');
       }
       onLoginSuccess(result.data);

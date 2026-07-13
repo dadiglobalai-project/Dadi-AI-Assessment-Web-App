@@ -5,6 +5,7 @@ import ApplicantAuth from './components/ApplicantAuth';
 import AdminPortal from './components/AdminPortal';
 import ApplicantPortal from './components/ApplicantPortal';
 import { User } from './types';
+import { apiRequest } from './config/api';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -42,8 +43,7 @@ export default function App() {
       const storedUserId = localStorage.getItem('assessment_user_id');
       if (storedUserId) {
         try {
-          const res = await fetch(`/api/auth/me?userId=${storedUserId}`);
-          const data = await res.json();
+          const data: any = await apiRequest(`/api/auth/me?userId=${storedUserId}`);
           if (data.success) {
             setCurrentUser(data.data);
           } else {

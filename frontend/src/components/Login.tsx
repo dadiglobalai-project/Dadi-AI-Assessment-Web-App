@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ShieldCheck, User as UserIcon, Lock, Mail, ChevronRight, AlertCircle, Info } from 'lucide-react';
 import { User } from '../types';
+import { apiRequest } from '../config/api';
 
 interface LoginProps {
   onLoginSuccess: (user: User) => void;
@@ -26,13 +27,11 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       : { email, password };
 
     try {
-      const res = await fetch(endpoint, {
+      const result: any = await apiRequest(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      const result = await res.json();
-      if (!res.ok || !result.success) {
+      if (!result.success) {
         throw new Error(result.message || 'Authentication failed');
       }
       onLoginSuccess(result.data);

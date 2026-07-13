@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserCheck, Shield, Mail, Lock, User as UserIcon, ArrowRight, AlertCircle, Loader2, ClipboardList } from 'lucide-react';
 import { User } from '../types';
+import { apiRequest } from '../config/api';
 
 interface ApplicantAuthProps {
   inviteToken?: string;
@@ -29,8 +30,7 @@ export default function ApplicantAuth({ inviteToken, initialMode = 'register', o
   useEffect(() => {
     const fetchRoles = async () => {
       try {
-        const res = await fetch('/api/roles');
-        const data = await res.json();
+        const data: any = await apiRequest('/api/roles');
         if (data.success) {
           setRoles(data.data.filter((r: any) => r.status !== 'INACTIVE'));
         }
@@ -59,8 +59,7 @@ export default function ApplicantAuth({ inviteToken, initialMode = 'register', o
     try {
       setInvitationValidating(true);
       setInvitationError(null);
-      const res = await fetch(`/api/invite/validate?token=${inviteToken}`);
-      const result = await res.json();
+      const result: any = await apiRequest(`/api/invite/validate?token=${inviteToken}`);
       
       if (result.success) {
         setInvitationDetails(result.data);
@@ -99,13 +98,11 @@ export default function ApplicantAuth({ inviteToken, initialMode = 'register', o
       : { email, password, requiredRole: 'APPLICANT' };
 
     try {
-      const res = await fetch(endpoint, {
+      const result: any = await apiRequest(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      const result = await res.json();
-      if (!res.ok || !result.success) {
+      if (!result.success) {
         throw new Error(result.message || 'Authentication failed');
       }
       onLoginSuccess(result.data);
