@@ -8,7 +8,7 @@ import {
 import { User, Assessment, Question, SubmissionSummary, Review } from '../types';
 import RichTextEditor from './RichTextEditor';
 import { getSafeFormattedHtml, stripHtmlTags } from '../utils/richText';
-import { apiRequest } from '../config/api';
+import { apiUrl } from '../config/api';
 
 interface AdminPortalProps {
   adminUser: User;
@@ -116,7 +116,8 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
         setRecordingUrlLoading(true);
         setRecordingUrlError(null);
         setRecordingSignedUrl(null);
-        const data: any = await apiRequest(`/api/admin/recordings/${recordingId}/url`);
+        const res = await fetch(apiUrl(`/api/admin/recordings/${recordingId}/url`));
+        const data = await res.json();
         if (!data.success) {
           throw new Error(data.message || "Failed to load recording URL");
         }
@@ -148,7 +149,8 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
 
   const fetchRoles = async () => {
     try {
-      const data: any = await apiRequest('/api/roles');
+      const res = await fetch(apiUrl('/api/roles'));
+      const data = await res.json();
       if (data.success) {
         setRoles(data.data);
       }
@@ -159,7 +161,8 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
 
   const fetchAssessments = async () => {
     try {
-      const data: any = await apiRequest('/api/admin/assessments');
+      const res = await fetch(apiUrl('/api/admin/assessments'));
+      const data = await res.json();
       if (data.success) {
         setAssessments(data.data);
       }
@@ -170,7 +173,8 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
 
   const fetchSubmissions = async () => {
     try {
-      const data: any = await apiRequest('/api/admin/submissions');
+      const res = await fetch(apiUrl('/api/admin/submissions'));
+      const data = await res.json();
       if (data.success) {
         setSubmissions(data.data);
       }
@@ -182,7 +186,8 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
   const fetchAssessmentDetails = async (id: string) => {
     try {
       setLoading(true);
-      const data: any = await apiRequest(`/api/admin/assessments/${id}`);
+      const res = await fetch(apiUrl(`/api/admin/assessments/${id}`));
+      const data = await res.json();
       if (data.success) {
         setSelectedAssessment(data.data);
         const config = data.data.questionConfig || {};
@@ -203,7 +208,8 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
     try {
       setLoading(true);
       setAiGradingResult(null); // Reset previous AI grading suggestions
-      const data: any = await apiRequest(`/api/admin/submissions/${id}`);
+      const res = await fetch(apiUrl(`/api/admin/submissions/${id}`));
+      const data = await res.json();
       if (data.success) {
         setSubmissionDetails(data.data);
         setSelectedSubmissionId(id);
@@ -228,8 +234,9 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
     e.preventDefault();
     try {
       setLoading(true);
-      const data: any = await apiRequest('/api/admin/assessments', {
+      const res = await fetch(apiUrl('/api/admin/assessments'), {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: newAssessmentTitle,
           instructions: newAssessmentInstructions,
@@ -239,6 +246,7 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
           created_by: adminUser.id
         })
       });
+      const data = await res.json();
       if (data.success) {
         showStatus('success', 'Assessment created successfully!');
         setIsCreatingAssessment(false);
@@ -259,10 +267,12 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
 
   const handleUpdateAssessmentStatus = async (id: string, status: 'ACTIVE' | 'DRAFT') => {
     try {
-      const data: any = await apiRequest(`/api/admin/assessments/${id}`, {
+      const res = await fetch(apiUrl(`/api/admin/assessments/${id}`), {
         method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })
       });
+      const data = await res.json();
       if (data.success) {
         showStatus('success', `Assessment is now ${status}`);
         fetchAssessments();
@@ -278,7 +288,8 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
   const handleDeleteAssessment = async (id: string) => {
     try {
       setLoading(true);
-      const data: any = await apiRequest(`/api/admin/assessments/${id}`, { method: 'DELETE' });
+      const res = await fetch(apiUrl(`/api/admin/assessments/${id}`), { method: 'DELETE' });
+      const data = await res.json();
       if (data.success) {
         showStatus('success', 'Assessment deleted');
         setSelectedAssessment(null);
@@ -305,8 +316,9 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
 
     try {
       setLoading(true);
-      const data: any = await apiRequest(endpoint, {
+      const res = await fetch(apiUrl(endpoint), {
         method,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question_text: questionText,
           question_type: questionType,
@@ -316,6 +328,7 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
           difficulty: questionDifficulty
         })
       });
+      const data = await res.json();
       if (data.success) {
         showStatus('success', editingQuestionId ? 'Question updated!' : 'Question added!');
         resetQuestionForm();
@@ -344,7 +357,8 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
   const handleDeleteQuestion = async (qId: string) => {
     if (!confirm("Delete this question?")) return;
     try {
-      const data: any = await apiRequest(`/api/admin/questions/${qId}`, { method: 'DELETE' });
+      const res = await fetch(apiUrl(`/api/admin/questions/${qId}`), { method: 'DELETE' });
+      const data = await res.json();
       if (data.success) {
         showStatus('success', 'Question deleted');
         if (selectedAssessment) {
@@ -372,8 +386,9 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
 
     try {
       setLoading(true);
-      const data: any = await apiRequest(`/api/admin/assessments/${selectedAssessment.id}/question-config`, {
+      const res = await fetch(apiUrl(`/api/admin/assessments/${selectedAssessment.id}/question-config`), {
         method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           easy_count: easyCount,
           medium_count: mediumCount,
@@ -381,6 +396,7 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
           randomize_order: randomizeOrder
         })
       });
+      const data = await res.json();
       if (data.success) {
         showStatus('success', 'Question randomization settings saved.');
         fetchAssessmentDetails(selectedAssessment.id);
@@ -403,10 +419,12 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
 
     try {
       setLoading(true);
-      const data: any = await apiRequest(`/api/admin/assessments/${selectedAssessment.id}`, {
+      const res = await fetch(apiUrl(`/api/admin/assessments/${selectedAssessment.id}`), {
         method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ time_limit_minutes: assessmentDuration })
       });
+      const data = await res.json();
       if (data.success) {
         showStatus('success', 'Assessment duration updated.');
         fetchAssessments();
@@ -429,14 +447,16 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
       const endpoint = editingRoleId ? `/api/admin/roles/${editingRoleId}` : '/api/admin/roles';
       const method = editingRoleId ? 'PUT' : 'POST';
 
-      const data: any = await apiRequest(endpoint, {
+      const res = await fetch(apiUrl(endpoint), {
         method,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           role_name: roleName,
           description: roleDescription,
           status: roleStatus
         })
       });
+      const data = await res.json();
       if (data.success) {
         showStatus('success', editingRoleId ? 'Role updated successfully!' : 'Role created successfully!');
         setIsCreatingRole(false);
@@ -467,9 +487,10 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
     if (!confirm("Are you sure you want to delete or deactivate this role?")) return;
     try {
       setLoading(true);
-      const data: any = await apiRequest(`/api/admin/roles/${roleId}`, {
+      const res = await fetch(apiUrl(`/api/admin/roles/${roleId}`), {
         method: 'DELETE'
       });
+      const data = await res.json();
       if (data.success) {
         showStatus('success', 'Role removed successfully');
         fetchRoles();
@@ -490,14 +511,16 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
 
     try {
       setAiGenerating(true);
-      const data: any = await apiRequest('/api/admin/ai/generate-questions', {
+      const res = await fetch(apiUrl('/api/admin/ai/generate-questions'), {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           topic: aiTopic,
           numQuestions: aiNumQuestions,
           assessmentId: selectedAssessment.id
         })
       });
+      const data = await res.json();
       if (data.success) {
         showStatus('success', `AI generated and saved ${data.data.length} questions!`);
         setShowAIGenModal(false);
@@ -520,14 +543,16 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
 
     try {
       setSavingReview(true);
-      const data: any = await apiRequest(`/api/admin/submissions/${selectedSubmissionId}/review`, {
+      const res = await fetch(apiUrl(`/api/admin/submissions/${selectedSubmissionId}/review`), {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           score: reviewScore,
           remarks: reviewRemarks,
           reviewed_by: adminUser.id
         })
       });
+      const data = await res.json();
       if (data.success) {
         showStatus('success', 'Review and grade saved successfully!');
         fetchSubmissions();
@@ -549,9 +574,10 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
     try {
       setAiGradingLoading(true);
       setAiGradingResult(null);
-      const data: any = await apiRequest(`/api/admin/submissions/${selectedSubmissionId}/ai-grade`, {
+      const res = await fetch(apiUrl(`/api/admin/submissions/${selectedSubmissionId}/ai-grade`), {
         method: 'POST'
       });
+      const data = await res.json();
       if (data.success) {
         setAiGradingResult(data.data);
         showStatus('success', 'AI evaluation complete!');
@@ -625,9 +651,10 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
 
     try {
       setLoading(true);
-      const data: any = await apiRequest(`/api/admin/submissions/${submissionId}/reset`, {
+      const res = await fetch(apiUrl(`/api/admin/submissions/${submissionId}/reset`), {
         method: 'POST'
       });
+      const data = await res.json();
       if (data.success) {
         showStatus('success', 'Submission reset. Applicant can now retake.');
         await fetchSubmissions();
@@ -660,10 +687,12 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
 
     try {
       setDeletingSubmission(true);
-      const data: any = await apiRequest(`/api/admin/submissions/${submissionId}`, {
+      const res = await fetch(apiUrl(`/api/admin/submissions/${submissionId}`), {
         method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ deleteApplicantAccount })
       });
+      const data = await res.json();
 
       if (!data.success) {
         showStatus('error', data.message || 'Failed to delete applicant submission');
@@ -1528,10 +1557,12 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
                           onChange={async (e) => {
                             const newRoleId = e.target.value;
                             try {
-                              const data: any = await apiRequest(`/api/admin/assessments/${selectedAssessment.id}`, {
+                              const res = await fetch(apiUrl(`/api/admin/assessments/${selectedAssessment.id}`), {
                                 method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ role_id: newRoleId || null })
                               });
+                              const data = await res.json();
                               if (data.success) {
                                 showStatus('success', 'Role assignment updated successfully.');
                                 fetchAssessments();

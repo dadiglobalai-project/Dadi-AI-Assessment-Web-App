@@ -1,18 +1,20 @@
 type ViteImportMeta = ImportMeta & {
   env?: {
-    VITE_API_BASE_URL?: string;
+    VITE_API_URL?: string;
   };
 };
 
 const env = (import.meta as ViteImportMeta).env;
 
-export const API_BASE_URL =
-  env?.VITE_API_BASE_URL ||
+const rawApiUrl =
+  env?.VITE_API_URL ||
   "https://dadi-ai-assessment-web-app.onrender.com";
 
-export function apiUrl(endpoint: string): string {
-  const normalizedEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
-  return `${API_BASE_URL.replace(/\/$/, "")}${normalizedEndpoint}`;
+export const API_URL = rawApiUrl.replace(/\/$/, "");
+
+export function apiUrl(path: string): string {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${API_URL}${normalizedPath}`;
 }
 
 export async function apiRequest<T>(

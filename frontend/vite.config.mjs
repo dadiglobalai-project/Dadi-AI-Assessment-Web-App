@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig } from 'vite';
 
+const apiTarget =
+  process.env.VITE_API_URL || 'https://dadi-ai-assessment-web-app.onrender.com';
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
 
@@ -17,7 +20,7 @@ export default defineConfig({
 
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: apiTarget,
         changeOrigin: true,
         secure: false,
       },
