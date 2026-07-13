@@ -46,6 +46,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
   const [startingAssessment, setStartingAssessment] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [missingQuestionIds, setMissingQuestionIds] = useState<string[]>([]);
+  const [submitValidationMessage, setSubmitValidationMessage] = useState<string | null>(null);
 
   // Auto-save debounce timeout ref
   const debounceTimers = useRef<{ [qId: string]: NodeJS.Timeout }>({});
@@ -91,19 +92,23 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
     return () => clearInterval(interval);
   }, [testActive, timeLeftSeconds]);
 
-  const fetchAssessmentData = async () => {
+  const fetchAssessmentData = async (options: { showLoading?: boolean } = {}) => {
+    const showLoading = options.showLoading !== false;
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       const res = await fetch(apiUrl(`/api/applicant/assessment?applicantId=${applicantUser.id}`));
       const data = await res.json();
       
       if (data.success) {
+        setErrorMsg(null);
         setAssessment(data.data.assessment);
-        setQuestions(data.data.questions);
+        setQuestions(data.data.questions || []);
         setStatusRecord(data.data.statusRecord);
         if (data.data.answers || data.data.questions) {
           const restoredAnswers = { ...(data.data.answers || {}) };
-          data.data.questions.forEach((question: any) => {
+          (data.data.questions || []).forEach((question: any) => {
             const draft = localStorage.getItem(`assessment_answer_${question.id}`);
             if (draft !== null) {
               restoredAnswers[question.id] = draft;
@@ -136,13 +141,18 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
             }
           }
         }
+        return true;
       } else {
         setErrorMsg(data.message || 'No active assessments found');
+        return false;
       }
     } catch (err) {
       setErrorMsg('Failed to connect to the server');
+      return false;
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
@@ -201,17 +211,26 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       });
       const data = await res.json();
       
-      if (data.success) {
-        const recorderStarted = startMediaRecorder(screenStream);
+      if (res.ok && data.success) {
+        setStatusRecord(data.data);
+        const activeStream = screenStreamRef.current || screenStream;
+        if (!activeStream) {
+          setErrorMsg("Screen recording stream is not available. Please grant permission again.");
+          return;
+        }
+
+        const recorderStarted = startMediaRecorder(activeStream);
         if (!recorderStarted) {
           return;
         }
-        setStatusRecord(data.data);
-        setTimeLeftSeconds(assessment.timeLimitMinutes * 60);
-        setTestActive(true);
-        setStage('test');
+
+        const reloaded = await fetchAssessmentData({ showLoading: false });
+        if (!reloaded) {
+          setErrorMsg("Assessment started, but questions could not be loaded. Please check your connection and try again.");
+          return;
+        }
       } else {
-        setErrorMsg(data.message);
+        setErrorMsg(data.message || 'Failed to start assessment');
       }
     } catch (err) {
       setErrorMsg("Failed to start assessment. Please check your internet connection.");
@@ -313,6 +332,10 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
   // Auto-saves answers with debouncing
   const handleAnswerChange = (questionId: string, value: string) => {
     setAnswers(prev => ({ ...prev, [questionId]: value }));
+    if (value.trim().length > 0) {
+      setMissingQuestionIds(prev => prev.filter(id => id !== questionId));
+      setSubmitValidationMessage(null);
+    }
 
     localStorage.setItem(`assessment_answer_${questionId}`, value);
 
@@ -375,45 +398,52 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
   };
 
   const handleAutoSubmitOnExpiry = () => {
-    setTestActive(false);
     submitAssessment('EXPIRED');
   };
 
   const handleForceSubmit = () => {
-    setTestActive(false);
     submitAssessment('SUBMITTED');
   };
 
+  const getMissingQuestionIds = () => {
+    return questions
+      .filter((question) => {
+        const answer = answers[question.id];
+        return answer == null || String(answer).trim().length === 0;
+      })
+      .map((question) => question.id);
+  };
+
+  const blockSubmitForMissingAnswers = (
+    questionIds: string[],
+    message = 'Please answer all questions before submitting.'
+  ) => {
+    setMissingQuestionIds(questionIds);
+    setSubmitValidationMessage(message);
+    setErrorMsg(null);
+    setUploadProgress(null);
+    setTestActive(true);
+    isSubmittingRef.current = false;
+
+    const firstMissingIndex = questions.findIndex(question => questionIds.includes(question.id));
+    if (firstMissingIndex >= 0) {
+      setActiveQuestionIdx(firstMissingIndex);
+    }
+  };
+
   const submitAssessment = async (finalStatus: 'SUBMITTED' | 'EXPIRED') => {
-    setTestActive(false);
     if (!statusRecord) return;
+    const localMissingQuestionIds = getMissingQuestionIds();
+    if (localMissingQuestionIds.length > 0) {
+      blockSubmitForMissingAnswers(localMissingQuestionIds);
+      return;
+    }
+
     isSubmittingRef.current = true;
 
     try {
       setUploadProgress("Finalizing answers...");
-      
-      // Stop the MediaRecorder if active
-      let recordingDurationSeconds = 0;
-      const recorder = mediaRecorderRef.current;
-      if (recorder && recorder.state !== 'inactive') {
-        recorder.stop();
-        if (recordingStartTime) {
-          recordingDurationSeconds = Math.floor((Date.now() - recordingStartTime) / 1000);
-        }
-      }
-      mediaRecorderRef.current = null;
 
-      // Stop all screen tracks to release sharing bar
-      const stream = screenStreamRef.current;
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
-      screenStreamRef.current = null;
-      setScreenStream(null);
-      setRecordingPermission(false);
-      setRecordingActive(false);
-
-      // Submit assessment status (backend validates answers)
       const submitRes = await fetch(apiUrl('/api/applicant/assessment/submit'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -424,25 +454,49 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       });
       const submitData = await submitRes.json();
 
-      if (!submitRes.ok) {
-        // If backend reports missing answers, show error and highlight those questions
-        if (submitData && Array.isArray(submitData.missingQuestionIds)) {
-          setMissingQuestionIds(submitData.missingQuestionIds);
-          setErrorMsg(submitData.message || 'Please answer all questions before submitting.');
-          isSubmittingRef.current = false;
-          setUploadProgress(null);
+      if (!submitRes.ok || !submitData.success) {
+        const backendMissingQuestionIds = Array.isArray(submitData.missingQuestionIds)
+          ? submitData.missingQuestionIds
+          : [];
+
+        if (backendMissingQuestionIds.length > 0) {
+          blockSubmitForMissingAnswers(
+            backendMissingQuestionIds,
+            submitData.message || 'Please answer all questions before submitting.'
+          );
           return;
         }
 
-        // Generic failure
-        setErrorMsg(submitData.message || 'Failed to submit assessment');
+        setSubmitValidationMessage(submitData.message || 'Failed to submit assessment');
         isSubmittingRef.current = false;
         setUploadProgress(null);
+        setTestActive(true);
         return;
       }
 
-      // Clear any previous missing markers
       setMissingQuestionIds([]);
+      setSubmitValidationMessage(null);
+      setTestActive(false);
+
+      // Stop the MediaRecorder only after backend accepts the submission.
+      let recordingDurationSeconds = 0;
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state !== 'inactive') {
+        recorder.stop();
+        if (recordingStartTime) {
+          recordingDurationSeconds = Math.floor((Date.now() - recordingStartTime) / 1000);
+        }
+      }
+      mediaRecorderRef.current = null;
+
+      const stream = screenStreamRef.current;
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      screenStreamRef.current = null;
+      setScreenStream(null);
+      setRecordingPermission(false);
+      setRecordingActive(false);
 
       // Wait a short bit to allow the final MediaRecorder chunks to settle
       setUploadProgress("Compiling and uploading screen recording...");
@@ -470,8 +524,9 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       setStage('completed');
     } catch (err) {
       console.error("Submission/Upload error:", err);
-      // Even if upload fails, take them to the completed screen so they are submitted
-      setStage('completed');
+      setSubmitValidationMessage('Unable to submit right now. Please try again.');
+      setTestActive(true);
+      isSubmittingRef.current = false;
     } finally {
       setUploadProgress(null);
     }
@@ -526,7 +581,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
             <h2 className="text-xl font-bold text-gray-900">Access Restricted</h2>
             <p className="text-sm text-gray-500 leading-relaxed">{errorMsg}</p>
             <button 
-              onClick={fetchAssessmentData}
+              onClick={() => fetchAssessmentData()}
               className="w-full py-2.5 bg-brand-green hover:bg-brand-green/90 text-white font-semibold rounded-xl text-xs transition-colors cursor-pointer"
             >
               Retry Access
@@ -682,7 +737,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
 
                   <div className="flex items-center justify-between text-xs font-semibold text-gray-400">
                     <span>Questions Tracker</span>
-                    <span>{Object.keys(answers).length} / {questions.length} Answered</span>
+                    <span>{questions.filter(q => answers[q.id]?.trim().length > 0).length} / {questions.length} Answered</span>
                   </div>
 
                   <div className="grid grid-cols-5 gap-2" id="questions-grid">
@@ -724,6 +779,12 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
                     </span>
                   </div>
 
+                  {submitValidationMessage && (
+                    <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                      {submitValidationMessage}
+                    </div>
+                  )}
+
                   <button
                     onClick={handleForceSubmit}
                     className="w-full flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold py-3.5 rounded-xl text-xs cursor-pointer transition-colors shadow-sm"
@@ -734,7 +795,11 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
                 </div>
 
                 {/* Right active question pane */}
-                <div className="md:col-span-8 bg-white border border-gray-100 rounded-2xl p-6 shadow-sm space-y-6" id="question-pane">
+                <div className={`md:col-span-8 bg-white border rounded-2xl p-6 shadow-sm space-y-6 ${
+                  missingQuestionIds.includes(questions[activeQuestionIdx].id) && !(answers[questions[activeQuestionIdx].id] || '').trim()
+                    ? 'border-rose-300 ring-2 ring-rose-100'
+                    : 'border-gray-100'
+                }`} id="question-pane">
                   <div className="flex justify-between items-center pb-3 border-b border-gray-100">
                     <span className="text-xs font-bold text-brand-green font-mono">QUESTION {activeQuestionIdx + 1} OF {questions.length}</span>
                     <span className="text-[10px] bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded-md font-mono">{questions[activeQuestionIdx].points} POINTS</span>
@@ -751,7 +816,11 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
                       <textarea
                         value={answers[questions[activeQuestionIdx].id] || ''}
                         onChange={(e) => handleAnswerChange(questions[activeQuestionIdx].id, e.target.value)}
-                        className="w-full min-h-48 border border-gray-300 rounded-xl p-4 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-brand-green focus:border-brand-green font-medium transition-all"
+                        className={`w-full min-h-48 border rounded-xl p-4 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-brand-green focus:border-brand-green font-medium transition-all ${
+                          missingQuestionIds.includes(questions[activeQuestionIdx].id) && !(answers[questions[activeQuestionIdx].id] || '').trim()
+                            ? 'border-rose-300 bg-rose-50/40'
+                            : 'border-gray-300'
+                        }`}
                         placeholder="Write your explanation or essay response here. Use bullet points or detailed sentences to clarify your thoughts..."
                       />
                     )}
@@ -762,7 +831,11 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
                         <textarea
                           value={answers[questions[activeQuestionIdx].id] || ''}
                           onChange={(e) => handleAnswerChange(questions[activeQuestionIdx].id, e.target.value)}
-                          className="w-full min-h-64 bg-slate-900 text-slate-100 border border-slate-800 rounded-xl p-4 text-xs leading-relaxed focus:outline-none font-mono focus:ring-2 focus:ring-brand-green focus:border-brand-green transition-all"
+                          className={`w-full min-h-64 bg-slate-900 text-slate-100 border rounded-xl p-4 text-xs leading-relaxed focus:outline-none font-mono focus:ring-2 focus:ring-brand-green focus:border-brand-green transition-all ${
+                            missingQuestionIds.includes(questions[activeQuestionIdx].id) && !(answers[questions[activeQuestionIdx].id] || '').trim()
+                              ? 'border-rose-400'
+                              : 'border-slate-800'
+                          }`}
                           placeholder="// Write your clean, executable code or program implementation here..."
                         />
                       </div>
@@ -778,6 +851,8 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
                               key={optIdx}
                               onClick={() => {
                                 setAnswers(prev => ({ ...prev, [questions[activeQuestionIdx].id]: opt }));
+                                setMissingQuestionIds(prev => prev.filter(id => id !== questions[activeQuestionIdx].id));
+                                setSubmitValidationMessage(null);
                                 saveAnswerToBackend(questions[activeQuestionIdx].id, opt);
                               }}
                               className={`w-full p-4 rounded-xl border text-left text-sm font-semibold transition-all cursor-pointer ${
