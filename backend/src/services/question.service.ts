@@ -1,7 +1,6 @@
 import {
   ai,
   Type,
-  checkEmailExists,
   dbHelper,
   errorResponse,
   fetchSupabaseRowsByColumn,
@@ -331,4 +330,3 @@ Allocate points to each question based on difficulty (e.g. TEXT = 10-15 pts, MUL
 
   return getResult();
 };
-

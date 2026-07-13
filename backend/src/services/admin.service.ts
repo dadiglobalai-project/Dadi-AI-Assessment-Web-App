@@ -1,7 +1,6 @@
 import {
   ai,
   Type,
-  checkEmailExists,
   dbHelper,
   errorResponse,
   fetchSupabaseRowsByColumn,

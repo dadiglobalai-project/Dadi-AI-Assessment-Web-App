@@ -16,7 +16,6 @@
     "@vitejs/plugin-react": "^5.0.4",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
-    "email-existence": "^0.1.6",
     "express": "^4.21.2",
     "multer": "^2.2.0",
     "vite": "^6.2.3"

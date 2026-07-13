@@ -1,7 +1,6 @@
 import {
   ai,
   Type,
-  checkEmailExists,
   dbHelper,
   errorResponse,
   fetchSupabaseRowsByColumn,
@@ -712,4 +711,3 @@ export const submitApplicantAssessmentService = async ({ body, params, query: re
 
   return getResult();
 };
-

@@ -1,7 +1,6 @@
 import {
   ai,
   Type,
-  checkEmailExists,
   dbHelper,
   errorResponse,
   fetchSupabaseRowsByColumn,
@@ -334,4 +333,3 @@ export const saveApplicantAnswerService = async ({ body, params, query: requestQ
 
   return getResult();
 };
-

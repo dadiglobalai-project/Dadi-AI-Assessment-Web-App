@@ -2,7 +2,6 @@ import path from "path";
 import {
   ai,
   Type,
-  checkEmailExists,
   dbHelper,
   errorResponse,
   fetchSupabaseRowsByColumn,

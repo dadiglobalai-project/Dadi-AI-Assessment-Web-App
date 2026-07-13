@@ -1,7 +1,6 @@
 import {
   ai,
   Type,
-  checkEmailExists,
   dbHelper,
   errorResponse,
   fetchSupabaseRowsByColumn,
@@ -10,6 +9,7 @@ import {
   successResponse,
   supabase
 } from "./core.service";
+import { hasValidMailDomain } from "../utils/validation";
 
 type ServiceRequest = {
   body: any;
@@ -140,19 +140,10 @@ export const registerService = async ({ body, params, query: requestQuery, file 
     return errorResponse(res, "Please enter a valid email address.", 400);
   }
 
-  try {
-    const emailExists = await checkEmailExists(normalizedEmail);
+  const hasMxRecords = await hasValidMailDomain(normalizedEmail);
 
-    if (!emailExists) {
-      return errorResponse(res, "Please enter a real and active email address.", 400);
-    }
-  } catch (error) {
-    console.error("Email existence validation failed:", {
-      email: normalizedEmail,
-      error
-    });
-
-    return errorResponse(res, "Unable to verify email address. Please try again.", 500);
+  if (!hasMxRecords) {
+    return errorResponse(res, "Please enter a valid email address with an active email domain.", 400);
   }
 
   let existingUser;
@@ -260,4 +251,3 @@ export const getCurrentUserService = async ({ body, params, query: requestQuery,
 
   return getResult();
 };
-

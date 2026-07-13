@@ -1,5 +1,4 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import emailExistence from "email-existence";
 import { dbHelper } from "./db-helper";
 import { supabase } from "../config/supabase";
 
@@ -25,20 +24,6 @@ export const successResponse = (res: any, data: any, message = "Success") => {
 export const errorResponse = (res: any, message: string, status = 400) => {
   return res.status(status).json({ success: false, message });
 };
-
-export const checkEmailExists = (email: string): Promise<boolean> => {
-  return new Promise((resolve, reject) => {
-    emailExistence.check(email, (error: Error | null, response: boolean) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-
-      resolve(response);
-    });
-  });
-};
-
 
 export const fetchSupabaseRowsByColumn = async (table: string, column: string, values: string[]) => {
   const uniqueValues = Array.from(new Set(values.filter(Boolean)));
@@ -81,4 +66,3 @@ export const groupRowsByColumn = (rows: any[], column: string) => {
     return acc;
   }, new Map<string, any[]>());
 };
-
