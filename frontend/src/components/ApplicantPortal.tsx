@@ -538,6 +538,8 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const evaluationQuestionCount = Number(assessment?.questionsCount ?? questions.length ?? 0);
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col" id="applicant-portal">
       {/* Top Header */}
@@ -611,7 +613,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
                     <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-1">Evaluation Questions</p>
                     <p className="text-lg font-bold text-gray-800 flex items-center gap-1.5">
                       <List className="h-5 w-5 text-brand-green" />
-                      {questions.length} Items
+                      {evaluationQuestionCount} {evaluationQuestionCount === 1 ? 'Item' : 'Items'}
                     </p>
                   </div>
                 </div>
