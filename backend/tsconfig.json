@@ -12,6 +12,7 @@
     "strict": false,
     "noEmit": true,
     "baseUrl": ".",
+    "ignoreDeprecations": "5.0",
     "paths": {
       "*": [
         "../frontend/node_modules/*",

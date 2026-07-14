@@ -149,14 +149,26 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
 
   const fetchRoles = async () => {
     try {
-      const res = await fetch(apiUrl('/api/roles'));
+      console.log("Admin roles state before refetch:", {
+        count: roles.length,
+        roleIds: roles.map((role) => role.id)
+      });
+
+      const res = await fetch(apiUrl('/api/roles'), { cache: 'no-store' });
       const data = await res.json();
       if (data.success) {
+        console.log("Admin roles refetch result:", {
+          count: data.data.length,
+          roleIds: data.data.map((role: any) => role.id)
+        });
         setRoles(data.data);
+        return data.data;
       }
     } catch (err) {
       console.error("Error fetching roles:", err);
     }
+
+    return roles;
   };
 
   const fetchAssessments = async () => {
@@ -446,29 +458,48 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
       setLoading(true);
       const endpoint = editingRoleId ? `/api/admin/roles/${editingRoleId}` : '/api/admin/roles';
       const method = editingRoleId ? 'PUT' : 'POST';
+      const requestUrl = apiUrl(endpoint);
+      const requestBody = {
+        role_name: roleName,
+        description: roleDescription,
+        status: roleStatus
+      };
 
-      const res = await fetch(apiUrl(endpoint), {
+      console.log("Admin role save request:", {
+        url: requestUrl,
+        method,
+        body: requestBody
+      });
+
+      const res = await fetch(requestUrl, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          role_name: roleName,
-          description: roleDescription,
-          status: roleStatus
-        })
+        body: JSON.stringify(requestBody)
       });
       const data = await res.json();
-      if (data.success) {
+
+      console.log("Admin role save response:", {
+        url: requestUrl,
+        method,
+        httpStatus: res.status,
+        ok: res.ok,
+        body: data,
+        roleIdsBeforeRefetch: roles.map((role) => role.id)
+      });
+
+      if (res.ok && data.success && data.data?.id) {
         showStatus('success', editingRoleId ? 'Role updated successfully!' : 'Role created successfully!');
         setIsCreatingRole(false);
         setEditingRoleId(null);
         setRoleName('');
         setRoleDescription('');
         setRoleStatus('ACTIVE');
-        fetchRoles();
+        await Promise.all([fetchRoles(), fetchAssessments()]);
       } else {
-        showStatus('error', data.message);
+        showStatus('error', data.message || 'Failed to save role');
       }
     } catch (err) {
+      console.error("Admin role save request failed:", err);
       showStatus('error', 'Failed to save role');
     } finally {
       setLoading(false);
@@ -493,7 +524,7 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
       const data = await res.json();
       if (data.success) {
         showStatus('success', 'Role removed successfully');
-        fetchRoles();
+        await Promise.all([fetchRoles(), fetchAssessments()]);
       } else {
         showStatus('error', data.message);
       }

@@ -237,12 +237,72 @@ const createServiceResponder = () => {
   };
 };
 
+const getSupabaseProjectInfo = () => {
+  const supabaseUrl = process.env.SUPABASE_URL || "";
+  let projectRef = "unknown";
+  let hostname = "unknown";
+
+  try {
+    hostname = new URL(supabaseUrl).hostname;
+    projectRef = hostname.split(".")[0] || "unknown";
+  } catch {
+    hostname = "invalid-url";
+    projectRef = "invalid-url";
+  }
+
+  return {
+    hostname,
+    projectRef
+  };
+};
+
+const ROLE_LIST_FILTERS = {
+  status: "none",
+  is_active: "none",
+  deleted_at: "none",
+  created_at: "none",
+  roleType: "none"
+};
+
+const listRolesFromSupabase = async (source: string) => {
+  const { data, error } = await supabase
+    .from("roles")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Supabase role list failed:", {
+      source,
+      supabase: getSupabaseProjectInfo(),
+      activeFilters: ROLE_LIST_FILTERS,
+      error
+    });
+    throw error;
+  }
+
+  const roles = data ?? [];
+  console.log("Supabase roles list result:", {
+    source,
+    dataSource: "Supabase roles",
+    supabase: getSupabaseProjectInfo(),
+    activeFilters: ROLE_LIST_FILTERS,
+    count: roles.length,
+    roleIds: roles.map((role: any) => role.id)
+  });
+
+  return roles;
+};
+
 export const getRolesService = async ({ body, params, query: requestQuery, file }: ServiceRequest): Promise<ServiceResult> => {
   const req = { body, params, query: requestQuery, file };
   const { res, getResult } = createServiceResponder();
 
-  const roles = dbHelper.getRoles();
-  successResponse(res, roles);
+  try {
+    const roles = await listRolesFromSupabase("GET /api/roles");
+    successResponse(res, roles);
+  } catch (err) {
+    errorResponse(res, "Failed to load roles", 500);
+  }
 
   return getResult();
 };
@@ -251,8 +311,12 @@ export const getAdminRolesService = async ({ body, params, query: requestQuery, 
   const req = { body, params, query: requestQuery, file };
   const { res, getResult } = createServiceResponder();
 
-  const roles = dbHelper.getRoles();
-  successResponse(res, roles);
+  try {
+    const roles = await listRolesFromSupabase("GET /api/admin/roles");
+    successResponse(res, roles);
+  } catch (err) {
+    errorResponse(res, "Failed to load roles", 500);
+  }
 
   return getResult();
 };
@@ -261,21 +325,96 @@ export const createRoleService = async ({ body, params, query: requestQuery, fil
   const req = { body, params, query: requestQuery, file };
   const { res, getResult } = createServiceResponder();
 
-  const { role_name, description, status } = req.body;
-  if (!role_name) {
+  const roleName = String(req.body.role_name ?? req.body.name ?? "").trim();
+  const description = req.body.description !== undefined ? String(req.body.description) : "";
+  const status = req.body.status || "ACTIVE";
+
+  if (!roleName) {
     return errorResponse(res, "Role name is required");
   }
 
-  const newRole = {
-    id: `role-${Date.now()}`,
-    role_name,
-    description: description || "",
-    status: status || "ACTIVE",
-    created_at: new Date().toISOString()
+  const now = new Date().toISOString();
+  const rolePayload = {
+    id: `role-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    role_name: roleName,
+    description,
+    status,
+    created_at: now
   };
 
-  dbHelper.saveRole(newRole);
-  successResponse(res, newRole, "Role created successfully");
+  console.log("Role creation request:", {
+    endpoint: "POST /api/admin/roles",
+    requestBody: req.body,
+    insertPayload: rolePayload,
+    supabase: getSupabaseProjectInfo()
+  });
+
+  const { data, error } = await supabase
+    .from("roles")
+    .insert(rolePayload)
+    .select()
+    .single();
+
+  console.log("Supabase role insert result:", {
+    endpoint: "POST /api/admin/roles",
+    createdRoleId: data?.id ?? rolePayload.id,
+    inserted: Boolean(data),
+    supabase: getSupabaseProjectInfo(),
+    data,
+    error
+  });
+
+  if (error) {
+    console.error("Supabase role insert failed:", {
+      endpoint: "POST /api/admin/roles",
+      insertPayload: rolePayload,
+      supabase: getSupabaseProjectInfo(),
+      error
+    });
+    return errorResponse(res, `Failed to create role: ${error.message}`, 500);
+  }
+
+  if (!data?.id) {
+    console.error("Supabase role insert returned no row:", {
+      endpoint: "POST /api/admin/roles",
+      insertPayload: rolePayload,
+      supabase: getSupabaseProjectInfo(),
+      data
+    });
+    return errorResponse(res, "Failed to create role: Supabase did not return the inserted row", 500);
+  }
+
+  const { data: verificationRow, error: verificationError } = await supabase
+    .from("roles")
+    .select("*")
+    .eq("id", data.id)
+    .maybeSingle();
+
+  console.log("Supabase role create verification:", {
+    roleId: data.id,
+    existsImmediatelyAfterInsert: Boolean(verificationRow),
+    supabase: getSupabaseProjectInfo(),
+    error: verificationError
+  });
+
+  if (verificationError) {
+    console.error("Supabase role create verification failed:", {
+      roleId: data.id,
+      supabase: getSupabaseProjectInfo(),
+      error: verificationError
+    });
+    return errorResponse(res, `Failed to verify created role: ${verificationError.message}`, 500);
+  }
+
+  if (!verificationRow) {
+    console.error("Supabase role create verification found no row:", {
+      roleId: data.id,
+      supabase: getSupabaseProjectInfo()
+    });
+    return errorResponse(res, "Failed to create role: inserted role was not found in Supabase", 500);
+  }
+
+  successResponse(res, data, "Role created successfully");
 
   return getResult();
 };
@@ -284,21 +423,53 @@ export const updateRoleService = async ({ body, params, query: requestQuery, fil
   const req = { body, params, query: requestQuery, file };
   const { res, getResult } = createServiceResponder();
 
-  const role = dbHelper.getRoleById(req.params.id);
+  const { data: role, error: lookupError } = await supabase
+    .from("roles")
+    .select("*")
+    .eq("id", req.params.id)
+    .maybeSingle();
+
+  if (lookupError) {
+    console.error("Supabase role lookup before update failed:", {
+      endpoint: "PUT /api/admin/roles/:id",
+      roleId: req.params.id,
+      supabase: getSupabaseProjectInfo(),
+      error: lookupError
+    });
+    return errorResponse(res, "Failed to update role", 500);
+  }
+
   if (!role) {
     return errorResponse(res, "Role not found", 404);
   }
 
   const { role_name, description, status } = req.body;
-  const updated = {
-    ...role,
-    role_name: role_name !== undefined ? role_name : role.role_name,
-    description: description !== undefined ? description : role.description,
-    status: status !== undefined ? status : role.status
-  };
+  const updates: any = {};
+  if (role_name !== undefined) updates.role_name = role_name;
+  if (description !== undefined) updates.description = description;
+  if (status !== undefined) updates.status = status;
 
-  dbHelper.saveRole(updated);
-  successResponse(res, updated, "Role updated successfully");
+  const { data, error } = await supabase
+    .from("roles")
+    .update(updates)
+    .eq("id", req.params.id)
+    .select()
+    .single();
+
+  console.log("Supabase role update result:", {
+    endpoint: "PUT /api/admin/roles/:id",
+    roleId: req.params.id,
+    requestBody: req.body,
+    supabase: getSupabaseProjectInfo(),
+    updated: Boolean(data),
+    error
+  });
+
+  if (error) {
+    return errorResponse(res, "Failed to update role", 500);
+  }
+
+  successResponse(res, data, "Role updated successfully");
 
   return getResult();
 };
@@ -307,11 +478,43 @@ export const deleteRoleService = async ({ body, params, query: requestQuery, fil
   const req = { body, params, query: requestQuery, file };
   const { res, getResult } = createServiceResponder();
 
-  const role = dbHelper.getRoleById(req.params.id);
+  const { data: role, error: lookupError } = await supabase
+    .from("roles")
+    .select("id")
+    .eq("id", req.params.id)
+    .maybeSingle();
+
+  if (lookupError) {
+    console.error("Supabase role lookup before delete failed:", {
+      endpoint: "DELETE /api/admin/roles/:id",
+      roleId: req.params.id,
+      supabase: getSupabaseProjectInfo(),
+      error: lookupError
+    });
+    return errorResponse(res, "Failed to delete role", 500);
+  }
+
   if (!role) {
     return errorResponse(res, "Role not found", 404);
   }
-  dbHelper.deleteRole(req.params.id);
+
+  const { error } = await supabase
+    .from("roles")
+    .delete()
+    .eq("id", req.params.id);
+
+  console.log("Supabase role delete result:", {
+    endpoint: "DELETE /api/admin/roles/:id",
+    roleId: req.params.id,
+    supabase: getSupabaseProjectInfo(),
+    deleted: !error,
+    error
+  });
+
+  if (error) {
+    return errorResponse(res, "Failed to delete role", 500);
+  }
+
   successResponse(res, null, "Role deleted successfully");
 
   return getResult();

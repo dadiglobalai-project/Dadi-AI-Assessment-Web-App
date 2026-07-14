@@ -57,7 +57,20 @@ export const validateInviteService = async ({ body, params, query: requestQuery,
     return errorResponse(res, "Invitation token is required");
   }
 
-  const assessment = dbHelper.getAssessmentById(token);
+  const { data: assessment, error: assessmentError } = await supabase
+    .from("assessments")
+    .select("*")
+    .eq("id", token)
+    .maybeSingle();
+
+  if (assessmentError) {
+    console.error("Supabase invitation assessment lookup failed:", {
+      assessmentId: token,
+      error: assessmentError
+    });
+    return errorResponse(res, "Failed to validate invitation", 500);
+  }
+
   if (!assessment) {
     return errorResponse(res, "Invalid invitation token. Assessment not found.", 404);
   }
@@ -66,7 +79,22 @@ export const validateInviteService = async ({ body, params, query: requestQuery,
     return errorResponse(res, "This assessment invitation is not currently active.", 400);
   }
 
-  const role = assessment.role_id ? dbHelper.getRoleById(assessment.role_id) : null;
+  const { data: role, error: roleError } = assessment.role_id
+    ? await supabase
+        .from("roles")
+        .select("*")
+        .eq("id", assessment.role_id)
+        .maybeSingle()
+    : { data: null, error: null };
+
+  if (roleError) {
+    console.error("Supabase invitation role lookup failed:", {
+      assessmentId: assessment.id,
+      roleId: assessment.role_id,
+      error: roleError
+    });
+    return errorResponse(res, "Failed to validate invitation", 500);
+  }
 
   successResponse(res, {
     id: assessment.id,
@@ -172,7 +200,19 @@ export const registerService = async ({ body, params, query: requestQuery, file 
   let newUserAppliedRoleId = appliedRoleId;
 
   if (inviteToken) {
-    const assessment = dbHelper.getAssessmentById(inviteToken);
+    const { data: assessment, error: assessmentError } = await supabase
+      .from("assessments")
+      .select("*")
+      .eq("id", inviteToken)
+      .maybeSingle();
+
+    if (assessmentError) {
+      console.error("Supabase registration invite assessment lookup failed:", {
+        assessmentId: inviteToken,
+        error: assessmentError
+      });
+      return errorResponse(res, "Failed to register user", 500);
+    }
 
     if (assessment && assessment.role_id) {
       newUserAppliedRoleId = assessment.role_id;

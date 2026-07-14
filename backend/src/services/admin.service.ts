@@ -270,7 +270,7 @@ export const reviewSubmissionService = async ({ body, params, query: requestQuer
     return errorResponse(res, "Score and remarks are required");
   }
 
-  const existingReview = dbHelper.getReviewByApplicantAssessmentId(aa.id);
+  const existingReview = await dbHelper.getReviewByApplicantAssessmentId(aa.id);
   const newReview = {
     id: existingReview ? existingReview.id : `rev-${Date.now()}`,
     applicant_assessment_id: aa.id,
@@ -281,8 +281,8 @@ export const reviewSubmissionService = async ({ body, params, query: requestQuer
     reviewed_at: new Date().toISOString()
   };
 
-  dbHelper.saveReview(newReview);
-  successResponse(res, newReview, "Submission reviewed successfully");
+  const savedReview = await dbHelper.saveReview(newReview);
+  successResponse(res, savedReview, "Submission reviewed successfully");
 
   return getResult();
 };

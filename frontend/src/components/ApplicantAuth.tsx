@@ -30,7 +30,7 @@ export default function ApplicantAuth({ inviteToken, initialMode = 'register', o
   useEffect(() => {
     const fetchRoles = async () => {
       try {
-        const res = await fetch(apiUrl('/api/roles'));
+        const res = await fetch(apiUrl('/api/roles'), { cache: 'no-store' });
         const data = await res.json();
         if (data.success) {
           setRoles(data.data.filter((r: any) => r.status !== 'INACTIVE'));
