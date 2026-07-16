@@ -5,6 +5,8 @@
 
 export type UserRole = 'ADMIN' | 'APPLICANT';
 
+
+
 export interface Role {
   id: string;
   role_name: string;
