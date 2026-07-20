@@ -6,6 +6,7 @@ import AdminPortal from './components/AdminPortal';
 import ApplicantPortal from './components/ApplicantPortal';
 import { User } from './types';
 import { apiUrl } from './config/api';
+import { ASSESSMENT_DEVICE_BLOCK_MESSAGE, isMobileOrTabletDevice } from './utils/device';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -99,12 +100,38 @@ export default function App() {
     inviteToken = params.get('invite') || params.get('token') || '';
   }
 
+  const isBlockedApplicantDevice = !isAdminRoute && isMobileOrTabletDevice();
+
+  // Invite links should not silently reuse a stale applicant id from a shared/browser session.
+  useEffect(() => {
+    if (inviteToken && currentUser?.role === 'APPLICANT') {
+      setCurrentUser(null);
+      localStorage.removeItem('assessment_user_id');
+    }
+  }, [inviteToken, currentUser?.id, currentUser?.role]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="text-center space-y-3">
           <Loader2 className="h-10 w-10 animate-spin text-brand-green mx-auto" />
           <p className="text-sm font-semibold text-gray-500 font-sans">Connecting to Assessment Center...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isBlockedApplicantDevice) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4" id="unsupported-assessment-device">
+        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-sm border border-red-100 text-center space-y-5">
+          <div className="p-3 bg-red-50 text-red-600 rounded-2xl inline-block">
+            <ShieldAlert className="h-10 w-10" />
+          </div>
+          <h2 className="text-xl font-bold text-gray-900">Desktop Required</h2>
+          <p className="text-sm text-gray-500 leading-relaxed font-medium">
+            {ASSESSMENT_DEVICE_BLOCK_MESSAGE}
+          </p>
         </div>
       </div>
     );

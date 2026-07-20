@@ -3,6 +3,7 @@ import {
   uploadApplicantRecordingService,
   getRecordingSignedUrlService
 } from "../services/recording.service";
+import { isBlockedAssessmentDevice, unsupportedAssessmentDeviceBody } from "../utils/device";
 
 const sendServiceResult = (res: Response, result: { status: number; body: any }) => {
   if (result.body === null || result.body === undefined) {
@@ -12,6 +13,10 @@ const sendServiceResult = (res: Response, result: { status: number; body: any })
 };
 
 export const uploadApplicantRecording = async (req: Request, res: Response) => {
+  if (isBlockedAssessmentDevice(req.headers)) {
+    return res.status(403).json(unsupportedAssessmentDeviceBody());
+  }
+
   const result = await uploadApplicantRecordingService({
     body: req.body,
     params: req.params,

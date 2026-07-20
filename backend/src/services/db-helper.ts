@@ -415,7 +415,7 @@ export const dbHelper = {
       .from("recordings")
       .select("*")
       .eq("applicant_assessment_id", aaId)
-      .order("created_at", { ascending: false })
+      .order("uploaded_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 

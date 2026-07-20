@@ -13,6 +13,7 @@ import {
   startApplicantAssessmentService,
   submitApplicantAssessmentService
 } from "../services/assessment.service";
+import { isBlockedAssessmentDevice, unsupportedAssessmentDeviceBody } from "../utils/device";
 
 const sendServiceResult = (res: Response, result: { status: number; body: any }) => {
   if (result.body === null || result.body === undefined) {
@@ -122,6 +123,10 @@ export const deleteAssessment = async (req: Request, res: Response) => {
 };
 
 export const startApplicantAssessment = async (req: Request, res: Response) => {
+  if (isBlockedAssessmentDevice(req.headers)) {
+    return res.status(403).json(unsupportedAssessmentDeviceBody());
+  }
+
   const result = await startApplicantAssessmentService({
     body: req.body,
     params: req.params,
@@ -132,6 +137,10 @@ export const startApplicantAssessment = async (req: Request, res: Response) => {
 };
 
 export const submitApplicantAssessment = async (req: Request, res: Response) => {
+  if (isBlockedAssessmentDevice(req.headers)) {
+    return res.status(403).json(unsupportedAssessmentDeviceBody());
+  }
+
   const result = await submitApplicantAssessmentService({
     body: req.body,
     params: req.params,

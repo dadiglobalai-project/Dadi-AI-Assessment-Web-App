@@ -9,8 +9,22 @@ import {
 } from "../services/core.service";
 
 import { assignQuestionsForAttempt, getAssignedQuestionsForAttempt, getAssessmentQuestionConfig } from "../services/assessment.service";
+import { isBlockedAssessmentDevice, unsupportedAssessmentDeviceBody } from "../utils/device";
+
+const blockUnsupportedAssessmentDevice = (req: Request, res: Response) => {
+  if (!isBlockedAssessmentDevice(req.headers)) {
+    return false;
+  }
+
+  res.status(403).json(unsupportedAssessmentDeviceBody());
+  return true;
+};
 
 export const getApplicantAssessment = async (req: Request, res: Response) => {
+  if (blockUnsupportedAssessmentDevice(req, res)) {
+    return;
+  }
+
   const applicantId = req.query.applicantId as string;
   if (!applicantId) {
     return errorResponse(res, "applicantId query parameter is required");
@@ -257,6 +271,10 @@ export const getApplicantAssessment = async (req: Request, res: Response) => {
 };
 
 export const saveApplicantAnswer = async (req: Request, res: Response) => {
+  if (blockUnsupportedAssessmentDevice(req, res)) {
+    return;
+  }
+
   const { applicantAssessmentId, questionId, answerText } = req.body;
   if (!applicantAssessmentId || !questionId) {
     return errorResponse(res, "applicantAssessmentId and questionId are required");

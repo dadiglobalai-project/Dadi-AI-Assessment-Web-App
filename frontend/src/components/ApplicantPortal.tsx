@@ -27,6 +27,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [recordingPermission, setRecordingPermission] = useState(false);
   const [recordingActive, setRecordingActive] = useState(false);
+  const [recordingUploadComplete, setRecordingUploadComplete] = useState(false);
   const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -123,10 +124,6 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
           if (status === 'SUBMITTED' || status === 'EXPIRED') {
             setStage('completed');
           } else if (status === 'IN_PROGRESS') {
-            // Re-joining an active assessment (recovery!)
-            setStage('test');
-            setTestActive(true);
-            
             // Calculate remaining time
             const startTime = new Date(data.data.statusRecord.startTime).getTime();
             const timeLimitMs = data.data.assessment.timeLimitMinutes * 60 * 1000;
@@ -138,6 +135,14 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
               setTestActive(false);
             } else {
               setTimeLeftSeconds(remainingSecs);
+              if (hasActiveRecording()) {
+                setStage('test');
+                setTestActive(true);
+              } else {
+                setStage('recording-consent');
+                setTestActive(false);
+                setErrorMsg("Screen sharing must be restored before you can continue this in-progress assessment.");
+              }
             }
           }
         }
@@ -157,6 +162,16 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
   };
 
   // Screen recording trigger
+  const isScreenStreamLive = (stream: MediaStream | null = screenStreamRef.current) => {
+    const videoTrack = stream?.getVideoTracks()[0];
+    return Boolean(videoTrack && videoTrack.readyState === 'live' && videoTrack.enabled);
+  };
+
+  const hasActiveRecording = () => {
+    const recorder = mediaRecorderRef.current;
+    return Boolean(recorder && recorder.state === 'recording' && isScreenStreamLive());
+  };
+
   const requestScreenSharing = async () => {
     setErrorMsg(null);
     try {
@@ -166,14 +181,23 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
         audio: false // Screen recording audio is optional and often blocks in browsers, video is sufficient
       });
 
+      const videoTrack = stream.getVideoTracks()[0];
+      if (!videoTrack || videoTrack.readyState !== 'live') {
+        stream.getTracks().forEach(track => track.stop());
+        setRecordingPermission(false);
+        setErrorMsg("Screen recording permission is required to proceed. Please select an active screen or browser tab.");
+        return;
+      }
+
+      // Listen for the applicant stopping the sharing via browser bar
+      videoTrack.onended = () => {
+        handleScreenShareInterrupted();
+      };
+
       setScreenStream(stream);
       screenStreamRef.current = stream;
       setRecordingPermission(true);
-
-      // Listen for the applicant stopping the sharing via browser bar
-      stream.getVideoTracks()[0].onended = () => {
-        handleScreenShareInterrupted();
-      };
+      setRecordingUploadComplete(false);
     } catch (err: any) {
       console.error("Screen share permission failed:", err);
       setRecordingPermission(false);
@@ -182,25 +206,78 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
   };
 
   const handleScreenShareInterrupted = () => {
-    // If they stopped sharing during active test, warn them or auto-submit
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') {
+      try {
+        recorder.requestData();
+      } catch (err) {
+        console.warn("Unable to flush interrupted recording data:", err);
+      }
+      recorder.stop();
+    }
+    mediaRecorderRef.current = null;
     setRecordingActive(false);
     setRecordingPermission(false);
     setScreenStream(null);
     screenStreamRef.current = null;
     if (testActiveRef.current && !isSubmittingRef.current) {
-      setErrorMsg("CRITICAL: Screen sharing was stopped by user. Anti-cheat protocol triggered submission.");
-      handleForceSubmit();
+      setErrorMsg("Screen sharing was stopped. Please restore screen sharing before answering or submitting.");
+    }
+  };
+
+  const restoreScreenSharing = async () => {
+    setErrorMsg(null);
+    setSubmitValidationMessage(null);
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false
+      });
+
+      const videoTrack = stream.getVideoTracks()[0];
+      if (!videoTrack || videoTrack.readyState !== 'live') {
+        stream.getTracks().forEach(track => track.stop());
+        setErrorMsg("Screen sharing could not be restored. Please select an active screen or browser tab.");
+        return;
+      }
+
+      videoTrack.onended = () => {
+        handleScreenShareInterrupted();
+      };
+
+      setScreenStream(stream);
+      screenStreamRef.current = stream;
+      setRecordingPermission(true);
+      setRecordingUploadComplete(false);
+
+      const recorderStarted = startMediaRecorder(stream, { resetChunks: false });
+      if (!recorderStarted || !hasActiveRecording()) {
+        stopRecordingResources();
+        setErrorMsg("Screen recording could not be restored. Please try sharing your screen again.");
+        return;
+      }
+    } catch (err) {
+      console.error("Screen share restore failed:", err);
+      setErrorMsg("Screen sharing is required to continue. Please restore screen sharing.");
     }
   };
 
   const handleStartAssessment = async () => {
-    if (!recordingPermission || !screenStream || !assessment) {
+    const activeStream = screenStreamRef.current || screenStream;
+    if (!recordingPermission || !activeStream || !isScreenStreamLive(activeStream) || !assessment) {
       setErrorMsg("Please grant screen recording permissions before starting.");
       return;
     }
 
     try {
       setStartingAssessment(true);
+      const recorderStarted = startMediaRecorder(activeStream, { resetChunks: true });
+      if (!recorderStarted || !hasActiveRecording()) {
+        stopRecordingResources();
+        setErrorMsg("Screen recording must be active before the assessment can start. Please share your screen again.");
+        return;
+      }
+
       const res = await fetch(apiUrl('/api/applicant/assessment/start'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -213,16 +290,6 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       
       if (res.ok && data.success) {
         setStatusRecord(data.data);
-        const activeStream = screenStreamRef.current || screenStream;
-        if (!activeStream) {
-          setErrorMsg("Screen recording stream is not available. Please grant permission again.");
-          return;
-        }
-
-        const recorderStarted = startMediaRecorder(activeStream);
-        if (!recorderStarted) {
-          return;
-        }
 
         const reloaded = await fetchAssessmentData({ showLoading: false });
         if (!reloaded) {
@@ -230,28 +297,32 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
           return;
         }
       } else {
+        stopRecordingResources();
         setErrorMsg(data.message || 'Failed to start assessment');
       }
     } catch (err) {
+      stopRecordingResources();
       setErrorMsg("Failed to start assessment. Please check your internet connection.");
     } finally {
       setStartingAssessment(false);
     }
   };
 
-  const startMediaRecorder = (stream: MediaStream) => {
+  const startMediaRecorder = (stream: MediaStream, options: { resetChunks?: boolean } = {}) => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       return true;
     }
 
-    if (!stream || stream.getVideoTracks().length === 0) {
+    if (!stream || !isScreenStreamLive(stream)) {
       console.error("No screen stream available.");
       setErrorMsg("Screen recording stream is not available. Please grant permission again.");
       return false;
     }
 
     try {
-      recordedChunks.current = [];
+      if (options.resetChunks) {
+        recordedChunks.current = [];
+      }
 
       let recorder: MediaRecorder;
 
@@ -279,7 +350,9 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
 
       recorder.onerror = (event) => {
         console.error("MediaRecorder error:", event);
-        setErrorMsg("Recording encountered an error, but your assessment will continue.");
+        setRecordingActive(false);
+        setRecordingPermission(false);
+        setErrorMsg("Recording encountered an error. Please restore screen sharing before continuing.");
       };
 
       recorder.onstop = () => {
@@ -300,11 +373,11 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
 
       mediaRecorderRef.current = recorder;
       screenStreamRef.current = stream;
-      setRecordingActive(true);
-      setRecordingStartTime(Date.now());
+      setRecordingActive(recorder.state === 'recording');
+      setRecordingStartTime(prev => (options.resetChunks ? Date.now() : prev ?? Date.now()));
 
       console.log("MediaRecorder started:", recorder.state);
-      return true;
+      return recorder.state === 'recording';
     } catch (err) {
       console.error("Failed to start MediaRecorder:", err);
       setErrorMsg("Failed to start screen recording. Please try again.");
@@ -329,8 +402,85 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
     setRecordingActive(false);
   };
 
+  const stopMediaRecorderAndCollectChunks = async () => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === 'inactive') {
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      const previousOnStop = recorder.onstop;
+      recorder.onstop = (event) => {
+        previousOnStop?.call(recorder, event);
+        resolve();
+      };
+
+      try {
+        if (recorder.state === 'recording') {
+          recorder.requestData();
+        }
+      } catch (err) {
+        console.warn("Unable to request final recording data:", err);
+      }
+
+      recorder.stop();
+    });
+
+    mediaRecorderRef.current = null;
+  };
+
+  const uploadCurrentRecording = async (applicantAssessmentId: string) => {
+    const recordingDurationSeconds = recordingStartTime
+      ? Math.max(0, Math.floor((Date.now() - recordingStartTime) / 1000))
+      : 0;
+
+    await stopMediaRecorderAndCollectChunks();
+
+    const stream = screenStreamRef.current;
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+    screenStreamRef.current = null;
+    setScreenStream(null);
+    setRecordingPermission(false);
+    setRecordingActive(false);
+
+    if (recordedChunks.current.length === 0) {
+      throw new Error("Screen recording is missing. Please restore screen sharing and try again.");
+    }
+
+    const videoBlob = new Blob(recordedChunks.current, { type: 'video/webm' });
+    if (videoBlob.size === 0) {
+      throw new Error("Screen recording is empty. Please restore screen sharing and try again.");
+    }
+
+    const videoFile = new File([videoBlob], `screen-record-${applicantAssessmentId}.webm`, { type: 'video/webm' });
+    const formData = new FormData();
+    formData.append('video', videoFile);
+    formData.append('applicantAssessmentId', applicantAssessmentId);
+    formData.append('duration', recordingDurationSeconds.toString());
+
+    const uploadRes = await fetch(apiUrl('/api/applicant/recording/upload'), {
+      method: 'POST',
+      body: formData
+    });
+    const uploadResult = await uploadRes.json();
+
+    if (!uploadRes.ok || !uploadResult.success) {
+      throw new Error(uploadResult.message || "Failed to upload screen recording. Please try again.");
+    }
+
+    setRecordingUploadComplete(true);
+    return uploadResult.data;
+  };
+
   // Auto-saves answers with debouncing
   const handleAnswerChange = (questionId: string, value: string) => {
+    if (!hasActiveRecording() && !recordingUploadComplete) {
+      setErrorMsg("Screen sharing is required before you can continue answering.");
+      return;
+    }
+
     setAnswers(prev => ({ ...prev, [questionId]: value }));
     if (value.trim().length > 0) {
       setMissingQuestionIds(prev => prev.filter(id => id !== questionId));
@@ -433,6 +583,12 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
 
   const submitAssessment = async (finalStatus: 'SUBMITTED' | 'EXPIRED') => {
     if (!statusRecord) return;
+    if (!hasActiveRecording() && !recordingUploadComplete) {
+      setSubmitValidationMessage("Screen sharing must be active before you can submit.");
+      setErrorMsg("Screen sharing was stopped. Please restore screen sharing before submitting.");
+      return;
+    }
+
     const localMissingQuestionIds = getMissingQuestionIds();
     if (localMissingQuestionIds.length > 0) {
       blockSubmitForMissingAnswers(localMissingQuestionIds);
@@ -442,6 +598,11 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
     isSubmittingRef.current = true;
 
     try {
+      if (!recordingUploadComplete) {
+        setUploadProgress("Compiling and uploading screen recording...");
+        await uploadCurrentRecording(statusRecord.id);
+      }
+
       setUploadProgress("Finalizing answers...");
 
       const submitRes = await fetch(apiUrl('/api/applicant/assessment/submit'), {
@@ -478,53 +639,10 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       setSubmitValidationMessage(null);
       setTestActive(false);
 
-      // Stop the MediaRecorder only after backend accepts the submission.
-      let recordingDurationSeconds = 0;
-      const recorder = mediaRecorderRef.current;
-      if (recorder && recorder.state !== 'inactive') {
-        recorder.stop();
-        if (recordingStartTime) {
-          recordingDurationSeconds = Math.floor((Date.now() - recordingStartTime) / 1000);
-        }
-      }
-      mediaRecorderRef.current = null;
-
-      const stream = screenStreamRef.current;
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
-      screenStreamRef.current = null;
-      setScreenStream(null);
-      setRecordingPermission(false);
-      setRecordingActive(false);
-
-      // Wait a short bit to allow the final MediaRecorder chunks to settle
-      setUploadProgress("Compiling and uploading screen recording...");
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      if (recordedChunks.current.length > 0) {
-        const videoBlob = new Blob(recordedChunks.current, { type: 'video/webm' });
-        const videoFile = new File([videoBlob], `screen-record-${statusRecord.id}.webm`, { type: 'video/webm' });
-        
-        const formData = new FormData();
-        formData.append('video', videoFile);
-        formData.append('applicantAssessmentId', statusRecord.id);
-        formData.append('duration', recordingDurationSeconds.toString());
-
-        const uploadRes = await fetch(apiUrl('/api/applicant/recording/upload'), {
-          method: 'POST',
-          body: formData
-        });
-        const uploadResult = await uploadRes.json();
-        if (!uploadResult.success) {
-          console.error("Recording upload failure:", uploadResult.message);
-        }
-      }
-
       setStage('completed');
     } catch (err) {
       console.error("Submission/Upload error:", err);
-      setSubmitValidationMessage('Unable to submit right now. Please try again.');
+      setSubmitValidationMessage(err instanceof Error ? err.message : 'Unable to submit right now. Please try again.');
       setTestActive(true);
       isSubmittingRef.current = false;
     } finally {
@@ -539,6 +657,8 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
   };
 
   const evaluationQuestionCount = Number(assessment?.questionsCount ?? questions.length ?? 0);
+  const answeringLocked = stage === 'test' && !recordingUploadComplete && !recordingActive;
+  const submitDisabled = Boolean(uploadProgress) || (!recordingUploadComplete && !recordingActive);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col" id="applicant-portal">
@@ -707,7 +827,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
                     Back to Instructions
                   </button>
                   <button
-                    disabled={!recordingPermission || startingAssessment}
+                    disabled={!recordingPermission || !isScreenStreamLive() || startingAssessment}
                     onClick={handleStartAssessment}
                     className="flex-1 py-3 bg-brand-green hover:bg-brand-green/90 disabled:bg-brand-green/50 text-white rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all shadow-sm"
                   >
@@ -787,9 +907,22 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
                     </div>
                   )}
 
+                  {answeringLocked && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs font-semibold text-amber-800 space-y-2">
+                      <p>Screen sharing is interrupted. Restore it to continue answering or submit.</p>
+                      <button
+                        onClick={restoreScreenSharing}
+                        className="w-full py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors"
+                      >
+                        Restore Screen Sharing
+                      </button>
+                    </div>
+                  )}
+
                   <button
                     onClick={handleForceSubmit}
-                    className="w-full flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold py-3.5 rounded-xl text-xs cursor-pointer transition-colors shadow-sm"
+                    disabled={submitDisabled}
+                    className="w-full flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-300 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl text-xs cursor-pointer transition-colors shadow-sm"
                   >
                     <StopCircle className="h-4 w-4 text-brand-yellow" />
                     Submit Final Responses
@@ -818,6 +951,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
                       <textarea
                         value={answers[questions[activeQuestionIdx].id] || ''}
                         onChange={(e) => handleAnswerChange(questions[activeQuestionIdx].id, e.target.value)}
+                        disabled={answeringLocked}
                         className={`w-full min-h-48 border rounded-xl p-4 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-brand-green focus:border-brand-green font-medium transition-all ${
                           missingQuestionIds.includes(questions[activeQuestionIdx].id) && !(answers[questions[activeQuestionIdx].id] || '').trim()
                             ? 'border-rose-300 bg-rose-50/40'
@@ -833,6 +967,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
                         <textarea
                           value={answers[questions[activeQuestionIdx].id] || ''}
                           onChange={(e) => handleAnswerChange(questions[activeQuestionIdx].id, e.target.value)}
+                          disabled={answeringLocked}
                           className={`w-full min-h-64 bg-slate-900 text-slate-100 border rounded-xl p-4 text-xs leading-relaxed focus:outline-none font-mono focus:ring-2 focus:ring-brand-green focus:border-brand-green transition-all ${
                             missingQuestionIds.includes(questions[activeQuestionIdx].id) && !(answers[questions[activeQuestionIdx].id] || '').trim()
                               ? 'border-rose-400'
@@ -851,13 +986,15 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
                           return (
                             <button
                               key={optIdx}
+                              disabled={answeringLocked}
                               onClick={() => {
+                                if (answeringLocked) return;
                                 setAnswers(prev => ({ ...prev, [questions[activeQuestionIdx].id]: opt }));
                                 setMissingQuestionIds(prev => prev.filter(id => id !== questions[activeQuestionIdx].id));
                                 setSubmitValidationMessage(null);
                                 saveAnswerToBackend(questions[activeQuestionIdx].id, opt);
                               }}
-                              className={`w-full p-4 rounded-xl border text-left text-sm font-semibold transition-all cursor-pointer ${
+                              className={`w-full p-4 rounded-xl border text-left text-sm font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer ${
                                 isSelected 
                                   ? 'bg-brand-green/5 border-brand-green text-brand-green shadow-sm' 
                                   : 'bg-white border-gray-200 hover:bg-gray-50 text-gray-700'

@@ -840,6 +840,11 @@ export const submitApplicantAssessmentService = async ({ body, params, query: re
     return errorResponse(res, "applicantAssessmentId is required");
   }
   try {
+    const applicantAssessment = await dbHelper.getApplicantAssessmentById(applicantAssessmentId);
+    if (!applicantAssessment) {
+      return errorResponse(res, "Assessment attempt not found", 404);
+    }
+
     // Server-side validation: ensure all assigned questions have non-empty answers
     const { data: assignments, error: assignmentsError } = await supabase
       .from('applicant_assessment_questions')
@@ -889,11 +894,21 @@ export const submitApplicantAssessmentService = async ({ body, params, query: re
     }
 
     // All validations passed — mark as submitted
+    const recording = await dbHelper.getRecordingByApplicantAssessmentId(applicantAssessmentId);
+    if (!recording || recording.applicant_assessment_id !== applicantAssessmentId || !recording.file_url || Number(recording.file_size ?? 0) <= 0) {
+      return res.status(400).json({
+        success: false,
+        code: 'RECORDING_REQUIRED',
+        message: 'Screen recording is required before submitting this assessment. Please restore screen sharing and upload the recording.'
+      });
+    }
+
     const now = new Date().toISOString();
+    const requestedStatus = req.body.status === 'EXPIRED' ? 'EXPIRED' : 'SUBMITTED';
     const { data: updatedRecord, error } = await supabase
       .from('applicant_assessments')
       .update({
-        status: 'SUBMITTED',
+        status: requestedStatus,
         submitted_at: now,
         updated_at: now
       })

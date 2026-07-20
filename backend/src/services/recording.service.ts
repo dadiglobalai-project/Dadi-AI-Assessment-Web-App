@@ -163,6 +163,10 @@ export const uploadApplicantRecordingService = async ({ body, params, query: req
     return errorResponse(res, "applicantAssessmentId and video file are required");
   }
 
+  if (!req.file.size || req.file.size <= 0) {
+    return errorResponse(res, "Recording video file is empty");
+  }
+
   const record = await dbHelper.getApplicantAssessmentById(applicantAssessmentId);
   if (!record) {
     return errorResponse(res, "Assessment record not found for this recording", 404);

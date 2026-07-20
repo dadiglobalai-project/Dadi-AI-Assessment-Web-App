@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/server.ts",
-    "build": "esbuild src/server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build": "esbuild ./src/server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "tsx src/utils/device.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

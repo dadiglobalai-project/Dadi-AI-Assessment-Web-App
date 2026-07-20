@@ -8,6 +8,7 @@
     "build": "vite build --configLoader runner",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
+    "test": "tsx src/utils/device.test.ts",
     "migrate:db": "tsx scripts/migrate-database-to-supabase.ts"
   },
   "dependencies": {
