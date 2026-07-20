@@ -15,20 +15,43 @@ loadEnv();
 
 export const app = express();
 
+const normalizeOrigin = (origin: string) => origin.replace(/\/$/, "");
+
 const allowedOrigins = [
   "http://localhost:5173",
   process.env.FRONTEND_URL,
+  process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
+  ...(process.env.FRONTEND_URLS || "")
+    .split(",")
+    .map(origin => origin.trim())
+    .filter(Boolean),
 ].filter((origin): origin is string => Boolean(origin));
+
+const normalizedAllowedOrigins = allowedOrigins.map(normalizeOrigin);
+
+const isAllowedOrigin = (origin: string) => {
+  const normalizedOrigin = normalizeOrigin(origin);
+  if (normalizedAllowedOrigins.includes(normalizedOrigin)) {
+    return true;
+  }
+
+  try {
+    const hostname = new URL(normalizedOrigin).hostname;
+    return hostname === "localhost" || hostname.endsWith(".vercel.app");
+  } catch {
+    return false;
+  }
+};
 
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || isAllowedOrigin(origin)) {
         callback(null, true);
         return;
       }
 
-      callback(new Error("Not allowed by CORS"));
+      callback(null, false);
     },
     credentials: true,
   })
