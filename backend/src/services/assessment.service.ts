@@ -894,8 +894,48 @@ export const submitApplicantAssessmentService = async ({ body, params, query: re
     }
 
     // All validations passed — mark as submitted
-    const recording = await dbHelper.getRecordingByApplicantAssessmentId(applicantAssessmentId);
+    if (req.body.validateOnly === true) {
+      return successResponse(res, {
+        applicantAssessmentId,
+        requiredQuestionIds: assignedQuestionIds,
+        answeredQuestionIds: assignedQuestionIds
+      }, 'All required answers are saved.');
+    }
+
+    const requestedRecordingId = req.body.recordingId ? String(req.body.recordingId) : "";
+    let recording: any = null;
+
+    if (requestedRecordingId) {
+      const { data: recordingById, error: recordingByIdError } = await supabase
+        .from('recordings')
+        .select('*')
+        .eq('id', requestedRecordingId)
+        .eq('applicant_assessment_id', applicantAssessmentId)
+        .maybeSingle();
+
+      if (recordingByIdError) {
+        console.error('Supabase recording lookup by id failed during submission:', {
+          applicantAssessmentId,
+          recordingId: requestedRecordingId,
+          error: recordingByIdError
+        });
+        return errorResponse(res, 'Failed to validate recording before submission', 500);
+      }
+
+      recording = recordingById;
+    } else {
+      recording = await dbHelper.getRecordingByApplicantAssessmentId(applicantAssessmentId);
+    }
+
     if (!recording || recording.applicant_assessment_id !== applicantAssessmentId || !recording.file_url || Number(recording.file_size ?? 0) <= 0) {
+      console.error('Submission blocked because recording is missing or invalid:', {
+        applicantAssessmentId,
+        requestedRecordingId: requestedRecordingId || null,
+        recordingFound: Boolean(recording),
+        recordingApplicantAssessmentId: recording?.applicant_assessment_id ?? null,
+        hasFileUrl: Boolean(recording?.file_url),
+        fileSize: recording?.file_size ?? null
+      });
       return res.status(400).json({
         success: false,
         code: 'RECORDING_REQUIRED',

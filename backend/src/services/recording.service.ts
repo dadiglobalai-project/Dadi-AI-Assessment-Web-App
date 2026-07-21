@@ -48,7 +48,7 @@ export const uploadRecordingToStorage = async ({
     .from(RECORDINGS_BUCKET)
     .upload(storagePath, buffer, {
       contentType: contentType || "video/webm",
-      upsert: true
+      upsert: false
     });
 
   if (error) {
@@ -158,7 +158,7 @@ export const uploadApplicantRecordingService = async ({ body, params, query: req
   const req = { body, params, query: requestQuery, file };
   const { res, getResult } = createServiceResponder();
 
-  const { applicantAssessmentId, duration } = req.body;
+  const { applicantAssessmentId, duration, segmentNumber } = req.body;
   if (!applicantAssessmentId || !req.file) {
     return errorResponse(res, "applicantAssessmentId and video file are required");
   }
@@ -174,6 +174,7 @@ export const uploadApplicantRecordingService = async ({ body, params, query: req
 
   const fileName = createRecordingFileName(req.file.originalname);
   let storagePath: string;
+  const parsedSegmentNumber = Number(segmentNumber || 1);
 
   try {
     storagePath = await uploadRecordingToStorage({
@@ -192,7 +193,7 @@ export const uploadApplicantRecordingService = async ({ body, params, query: req
   }
 
   const recording = {
-    id: `rec-${Date.now()}`,
+    id: `rec-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
     applicant_assessment_id: applicantAssessmentId,
     file_name: fileName,
     file_url: storagePath,
@@ -202,8 +203,16 @@ export const uploadApplicantRecordingService = async ({ body, params, query: req
   };
 
   try {
-    await dbHelper.saveRecording(recording);
-    successResponse(res, recording, "Recording uploaded and saved successfully!");
+    const savedRecording = await dbHelper.saveRecording(recording);
+    console.log("Recording metadata insert succeeded:", {
+      applicantAssessmentId,
+      recordingId: savedRecording.id,
+      segmentNumber: Number.isFinite(parsedSegmentNumber) ? parsedSegmentNumber : 1,
+      fileName,
+      storagePath,
+      fileSize: req.file.size
+    });
+    successResponse(res, savedRecording, "Recording uploaded and saved successfully!");
   } catch (err) {
     console.error("Recording upload metadata save failed:", {
       applicantAssessmentId,

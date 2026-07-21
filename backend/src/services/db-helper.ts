@@ -428,7 +428,7 @@ export const dbHelper = {
   saveRecording: async (recording: any) => {
     const { data, error } = await getSupabaseClient()
       .from("recordings")
-      .upsert(recording, { onConflict: "id" })
+      .insert(recording)
       .select()
       .single();
 

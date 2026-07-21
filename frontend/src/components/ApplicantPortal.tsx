@@ -28,12 +28,15 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
   const [recordingPermission, setRecordingPermission] = useState(false);
   const [recordingActive, setRecordingActive] = useState(false);
   const [recordingUploadComplete, setRecordingUploadComplete] = useState(false);
+  const [uploadedRecordingId, setUploadedRecordingId] = useState<string | null>(null);
   const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const testActiveRef = useRef(false);
   const isSubmittingRef = useRef(false);
   const recordedChunks = useRef<Blob[]>([]);
+  const answersRef = useRef<{ [qId: string]: string }>({});
+  const pendingAutosavesRef = useRef<Map<string, Promise<boolean>>>(new Map());
 
   // Timer & Assessment state
   const [timeLeftSeconds, setTimeLeftSeconds] = useState<number>(0);
@@ -106,6 +109,10 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
         setErrorMsg(null);
         setAssessment(data.data.assessment);
         setQuestions(data.data.questions || []);
+        if (data.data.statusRecord?.id && data.data.statusRecord.id !== statusRecord?.id) {
+          setRecordingUploadComplete(false);
+          setUploadedRecordingId(null);
+        }
         setStatusRecord(data.data.statusRecord);
         if (data.data.answers || data.data.questions) {
           const restoredAnswers = { ...(data.data.answers || {}) };
@@ -116,6 +123,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
             }
           });
           setAnswers(restoredAnswers);
+          answersRef.current = restoredAnswers;
         }
         
         // Setup initial stage
@@ -469,11 +477,19 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       throw new Error("Screen recording is empty. Please restore screen sharing and try again.");
     }
 
-    const videoFile = new File([videoBlob], `screen-record-${applicantAssessmentId}.webm`, { type: 'video/webm' });
+    const segmentNumber = 1;
+    const videoFile = new File([videoBlob], `screen-record-${applicantAssessmentId}-segment-${segmentNumber}.webm`, { type: 'video/webm' });
+    console.log("Recording final blob prepared:", {
+      applicantAssessmentId,
+      segmentNumber,
+      blobSize: videoBlob.size,
+      chunks: recordedChunks.current.length
+    });
     const formData = new FormData();
     formData.append('video', videoFile);
     formData.append('applicantAssessmentId', applicantAssessmentId);
     formData.append('duration', recordingDurationSeconds.toString());
+    formData.append('segmentNumber', segmentNumber.toString());
 
     const uploadRes = await fetch(apiUrl('/api/applicant/recording/upload'), {
       method: 'POST',
@@ -485,6 +501,19 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       throw new Error(uploadResult.message || "Failed to upload screen recording. Please try again.");
     }
 
+    const recordingId = uploadResult.data?.id;
+    if (!recordingId) {
+      throw new Error("Recording uploaded, but the server did not return a recording id. Please try again.");
+    }
+
+    console.log("Recording upload confirmed:", {
+      applicantAssessmentId,
+      recordingId,
+      segmentNumber,
+      fileSize: uploadResult.data?.file_size ?? videoBlob.size
+    });
+
+    setUploadedRecordingId(recordingId);
     setRecordingUploadComplete(true);
     return uploadResult.data;
   };
@@ -496,6 +525,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       return;
     }
 
+    answersRef.current = { ...answersRef.current, [questionId]: value };
     setAnswers(prev => ({ ...prev, [questionId]: value }));
     if (value.trim().length > 0) {
       setMissingQuestionIds(prev => prev.filter(id => id !== questionId));
@@ -519,9 +549,10 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
   };
 
   const saveAnswerToBackend = async (questionId: string, text: string) => {
-    if (!statusRecord) return;
+    if (!statusRecord) return false;
 
-    try {
+    const savePromise = (async () => {
+      try {
       const res = await fetch(apiUrl('/api/applicant/answers/save'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -541,15 +572,28 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       if (data.success) {
         setAutoSaveStatus('saved');
         localStorage.removeItem(`assessment_answer_${questionId}`);
+        return true;
       } else {
         setAutoSaveStatus('error');
         scheduleAutosaveRetry(questionId, text);
+        return false;
       }
     } catch (err) {
       console.error("Autosave failed:", err);
       setAutoSaveStatus('error');
       scheduleAutosaveRetry(questionId, text);
+      return false;
     }
+    })();
+
+    pendingAutosavesRef.current.set(questionId, savePromise);
+    savePromise.finally(() => {
+      if (pendingAutosavesRef.current.get(questionId) === savePromise) {
+        pendingAutosavesRef.current.delete(questionId);
+      }
+    });
+
+    return savePromise;
   };
 
   const scheduleAutosaveRetry = (questionId: string, text: string) => {
@@ -573,10 +617,100 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
   const getMissingQuestionIds = () => {
     return questions
       .filter((question) => {
-        const answer = answers[question.id];
+        const answer = answersRef.current[question.id];
         return answer == null || String(answer).trim().length === 0;
       })
       .map((question) => question.id);
+  };
+
+  const logSubmissionDiagnostics = (context: string, missingQuestionIds: string[] = []) => {
+    const answeredQuestionIds = questions
+      .filter(question => String(answersRef.current[question.id] ?? '').trim().length > 0)
+      .map(question => question.id);
+
+    console.log("Assessment submission diagnostics:", {
+      context,
+      applicantAssessmentId: statusRecord?.id ?? null,
+      totalQuestionCount: questions.length,
+      requiredQuestionIds: questions.map(question => question.id),
+      answeredQuestionIds,
+      missingQuestionIds,
+      pendingAutosaveOperations: pendingAutosavesRef.current.size,
+      mediaRecorderState: mediaRecorderRef.current?.state ?? "none",
+      recordingActive,
+      recordedChunkCount: recordedChunks.current.length
+    });
+  };
+
+  const flushPendingAutosaves = async () => {
+    if (!statusRecord) return false;
+
+    Object.values(debounceTimers.current).forEach(clearTimeout);
+    Object.values(retryTimers.current).forEach(clearTimeout);
+    debounceTimers.current = {};
+    retryTimers.current = {};
+
+    const currentAnswers = answersRef.current;
+    const saveResults = await Promise.all(
+      questions.map(question => {
+        const answerText = currentAnswers[question.id] ?? "";
+        return saveAnswerToBackend(question.id, answerText);
+      })
+    );
+
+    const pendingResults = await Promise.all(Array.from(pendingAutosavesRef.current.values()));
+    const allResults = [...saveResults, ...pendingResults];
+
+    console.log("Pending autosave flush completed:", {
+      applicantAssessmentId: statusRecord.id,
+      attemptedSaves: saveResults.length,
+      pendingAutosaveOperations: pendingAutosavesRef.current.size,
+      failedSaves: allResults.filter(result => !result).length
+    });
+
+    return allResults.every(Boolean);
+  };
+
+  const validateSavedAnswersBeforeRecording = async () => {
+    if (!statusRecord) return false;
+
+    const res = await fetch(apiUrl('/api/applicant/assessment/submit'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        applicantAssessmentId: statusRecord.id,
+        validateOnly: true
+      })
+    });
+    const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      const backendMissingQuestionIds = Array.isArray(data.missingQuestionIds)
+        ? data.missingQuestionIds
+        : [];
+
+      if (backendMissingQuestionIds.length > 0) {
+        logSubmissionDiagnostics("backend-preflight-missing-answers", backendMissingQuestionIds);
+        blockSubmitForMissingAnswers(
+          backendMissingQuestionIds,
+          data.message || 'Please answer all questions before submitting.'
+        );
+        return false;
+      }
+
+      setSubmitValidationMessage(data.message || 'Unable to validate saved answers. Please try again.');
+      setUploadProgress(null);
+      setTestActive(true);
+      isSubmittingRef.current = false;
+      return false;
+    }
+
+    console.log("Backend answer preflight passed:", {
+      applicantAssessmentId: statusRecord.id,
+      requiredQuestionCount: Array.isArray(data.data?.requiredQuestionIds) ? data.data.requiredQuestionIds.length : null
+    });
+
+    return true;
   };
 
   const blockSubmitForMissingAnswers = (
@@ -606,6 +740,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
 
     const localMissingQuestionIds = getMissingQuestionIds();
     if (localMissingQuestionIds.length > 0) {
+      logSubmissionDiagnostics("frontend-missing-answers", localMissingQuestionIds);
       blockSubmitForMissingAnswers(localMissingQuestionIds);
       return;
     }
@@ -613,22 +748,62 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
     isSubmittingRef.current = true;
 
     try {
-      if (!recordingUploadComplete) {
+      logSubmissionDiagnostics("before-autosave-flush");
+      setUploadProgress("Saving latest answers...");
+      const autosavesFlushed = await flushPendingAutosaves();
+      if (!autosavesFlushed) {
+        setSubmitValidationMessage("Some answers could not be saved yet. Please check your connection and try submitting again.");
+        setUploadProgress(null);
+        setTestActive(true);
+        isSubmittingRef.current = false;
+        return;
+      }
+
+      logSubmissionDiagnostics("after-autosave-flush");
+      setUploadProgress("Validating saved answers...");
+      const savedAnswersValid = await validateSavedAnswersBeforeRecording();
+      if (!savedAnswersValid) {
+        return;
+      }
+
+      let recordingIdForSubmit = uploadedRecordingId;
+      if (!recordingUploadComplete || !recordingIdForSubmit) {
         setUploadProgress("Compiling and uploading screen recording...");
-        await uploadCurrentRecording(statusRecord.id);
+        const uploadedRecording = await uploadCurrentRecording(statusRecord.id);
+        recordingIdForSubmit = uploadedRecording.id;
       }
 
       setUploadProgress("Finalizing answers...");
 
-      const submitRes = await fetch(apiUrl('/api/applicant/assessment/submit'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const submitFinalAssessment = async (recordingId: string | null) => {
+        const submitRes = await fetch(apiUrl('/api/applicant/assessment/submit'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            applicantAssessmentId: statusRecord.id,
+            recordingId,
+            status: finalStatus
+          })
+        });
+        const submitData = await submitRes.json();
+        return { submitRes, submitData };
+      };
+
+      let { submitRes, submitData } = await submitFinalAssessment(recordingIdForSubmit);
+
+      if ((!submitRes.ok || !submitData.success) && submitData.code === 'RECORDING_REQUIRED') {
+        console.warn("Recording validation failed after upload; retrying recording upload once.", {
           applicantAssessmentId: statusRecord.id,
-          status: finalStatus
-        })
-      });
-      const submitData = await submitRes.json();
+          recordingId: recordingIdForSubmit,
+          recordedChunkCount: recordedChunks.current.length
+        });
+        setRecordingUploadComplete(false);
+        setUploadedRecordingId(null);
+        setUploadProgress("Re-uploading screen recording...");
+        const uploadedRecording = await uploadCurrentRecording(statusRecord.id);
+        recordingIdForSubmit = uploadedRecording.id;
+        ({ submitRes, submitData } = await submitFinalAssessment(recordingIdForSubmit));
+      }
 
       if (!submitRes.ok || !submitData.success) {
         const backendMissingQuestionIds = Array.isArray(submitData.missingQuestionIds)
@@ -636,11 +811,17 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
           : [];
 
         if (backendMissingQuestionIds.length > 0) {
+          logSubmissionDiagnostics("backend-missing-answers", backendMissingQuestionIds);
           blockSubmitForMissingAnswers(
             backendMissingQuestionIds,
             submitData.message || 'Please answer all questions before submitting.'
           );
           return;
+        }
+
+        if (submitData.code === 'RECORDING_REQUIRED') {
+          setRecordingUploadComplete(false);
+          setUploadedRecordingId(null);
         }
 
         setSubmitValidationMessage(submitData.message || 'Failed to submit assessment');
@@ -1008,6 +1189,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
                               disabled={answeringLocked}
                               onClick={() => {
                                 if (answeringLocked) return;
+                                answersRef.current = { ...answersRef.current, [questions[activeQuestionIdx].id]: opt };
                                 setAnswers(prev => ({ ...prev, [questions[activeQuestionIdx].id]: opt }));
                                 setMissingQuestionIds(prev => prev.filter(id => id !== questions[activeQuestionIdx].id));
                                 setSubmitValidationMessage(null);
