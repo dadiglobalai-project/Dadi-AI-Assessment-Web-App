@@ -1150,8 +1150,48 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
                       <Video className="h-4.5 w-4.5 text-indigo-600" />
                       Applicant Screen Recording Capture
                     </h3>
+
+                    {Array.isArray(submissionDetails.recordings) && submissionDetails.recordings.length > 0 && (
+                      <div className="space-y-4">
+                        {(recordingUrlLoading || recordingUrlError) && (
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-medium text-slate-600">
+                            {recordingUrlLoading ? 'Preparing secure recording links...' : recordingUrlError}
+                          </div>
+                        )}
+
+                        {submissionDetails.recordings.map((recording: any, index: number) => {
+                          const duration = Number(recording.duration_seconds ?? recording.duration ?? 0);
+                          const segmentNumber = Number(recording.segment_number ?? index + 1);
+                          return (
+                            <div key={recording.id} className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800" id={`video-wrapper-${recording.id}`}>
+                              <div className="bg-slate-950 px-4 py-2 flex items-center justify-between text-xs font-semibold text-slate-200">
+                                <span>Recording Part {segmentNumber}</span>
+                                <span>{Math.floor(duration / 60)}m {duration % 60}s</span>
+                              </div>
+                              <div className="aspect-video">
+                                <video
+                                  src={recordingSignedUrls[recording.id] ?? undefined}
+                                  controls
+                                  className="w-full h-full object-contain bg-black"
+                                  onLoadedMetadata={(event) => {
+                                    event.currentTarget.playbackRate = playbackRate;
+                                  }}
+                                  {...({ referrerPolicy: "strict-origin" } as any)}
+                                />
+                              </div>
+                              <div className="bg-slate-950 px-4 py-2 grid grid-cols-1 md:grid-cols-2 gap-1 text-xs font-mono text-slate-400">
+                                <span>File: {recording.file_name}</span>
+                                <span>Started: {recording.started_at ? new Date(recording.started_at).toLocaleString() : 'Unavailable'}</span>
+                                <span>Ended: {recording.ended_at ? new Date(recording.ended_at).toLocaleString() : 'Unavailable'}</span>
+                                <span>Status: {recording.upload_status ?? 'UPLOADED'}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                     
-                    {submissionDetails.recording ? (
+                    {(!Array.isArray(submissionDetails.recordings) || submissionDetails.recordings.length === 0) && submissionDetails.recording ? (
                       <div className="bg-slate-900 rounded-xl overflow-hidden aspect-video border border-slate-800 flex flex-col justify-between" id="video-wrapper">
                         <video
                           ref={videoRef}
@@ -1268,13 +1308,13 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
                           </div>
                         )}
                       </div>
-                    ) : (
+                    ) : (!Array.isArray(submissionDetails.recordings) || submissionDetails.recordings.length === 0) && !submissionDetails.recording ? (
                       <div className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center bg-gray-50 text-gray-400">
                         <Video className="h-10 w-10 mx-auto text-gray-300 mb-2 animate-pulse" />
                         <p className="text-sm font-semibold">No screen recording submitted</p>
                         <p className="text-xs">Either recording was interrupted or applicant exited early.</p>
                       </div>
-                    )}
+                    ) : null}
                   </div>
 
                   {/* Answers & Assessment Details */}
