@@ -17,9 +17,9 @@ const sanitizeStorageSegment = (value: string) => {
   return value.replace(/[^a-zA-Z0-9._-]/g, "-");
 };
 
-export const createRecordingFileName = (originalName: string) => {
+export const createRecordingFileName = (originalName: string, segmentNumber = 1) => {
   const ext = path.extname(originalName) || ".webm";
-  return `recording-${Date.now()}-${Math.random().toString(36).slice(2, 11)}${ext}`;
+  return `segment-${segmentNumber}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}${ext}`;
 };
 
 export const buildRecordingStoragePath = (applicantAssessmentId: string, fileName: string) => {
@@ -117,6 +117,62 @@ export const deleteRecordingsFromStorage = async (storagePaths: string[]) => {
   });
 };
 
+const saveRecordingEvent = async ({
+  applicantAssessmentId,
+  eventType,
+  segmentNumber,
+  metadata = {}
+}: {
+  applicantAssessmentId: string;
+  eventType: string;
+  segmentNumber?: number;
+  metadata?: Record<string, unknown>;
+}) => {
+  const { error } = await supabase
+    .from("recording_events")
+    .insert({
+      id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      applicant_assessment_id: applicantAssessmentId,
+      event_type: eventType,
+      segment_number: segmentNumber ?? null,
+      occurred_at: new Date().toISOString(),
+      metadata
+    });
+
+  if (error) {
+    console.error("Recording event insert failed:", {
+      applicantAssessmentId,
+      eventType,
+      segmentNumber,
+      error
+    });
+  }
+};
+
+const getNextRecordingSegmentNumber = async (applicantAssessmentId: string, requestedSegmentNumber: number) => {
+  const { data, error } = await supabase
+    .from("recordings")
+    .select("segment_number")
+    .eq("applicant_assessment_id", applicantAssessmentId)
+    .order("segment_number", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    console.error("Recording segment number lookup failed:", {
+      applicantAssessmentId,
+      error
+    });
+    throw error;
+  }
+
+  const highestSegmentNumber = Number(data?.[0]?.segment_number ?? 0);
+  if (!Number.isFinite(highestSegmentNumber) || highestSegmentNumber <= 0) {
+    return requestedSegmentNumber;
+  }
+
+  return Math.max(requestedSegmentNumber, highestSegmentNumber + 1);
+};
+
 type ServiceRequest = {
   body: any;
   params: Record<string, any>;
@@ -158,7 +214,7 @@ export const uploadApplicantRecordingService = async ({ body, params, query: req
   const req = { body, params, query: requestQuery, file };
   const { res, getResult } = createServiceResponder();
 
-  const { applicantAssessmentId, duration, segmentNumber } = req.body;
+  const { applicantAssessmentId, duration, segmentNumber, segmentStartedAt, segmentEndedAt, clientSegmentId } = req.body;
   if (!applicantAssessmentId || !req.file) {
     return errorResponse(res, "applicantAssessmentId and video file are required");
   }
@@ -172,9 +228,43 @@ export const uploadApplicantRecordingService = async ({ body, params, query: req
     return errorResponse(res, "Assessment record not found for this recording", 404);
   }
 
-  const fileName = createRecordingFileName(req.file.originalname);
-  let storagePath: string;
+  if (clientSegmentId) {
+    const { data: existingSegment, error: existingSegmentError } = await supabase
+      .from("recordings")
+      .select("*")
+      .eq("applicant_assessment_id", applicantAssessmentId)
+      .eq("client_segment_id", String(clientSegmentId))
+      .maybeSingle();
+
+    if (existingSegmentError) {
+      console.error("Recording idempotency lookup failed:", {
+        applicantAssessmentId,
+        clientSegmentId,
+        error: existingSegmentError
+      });
+      return errorResponse(res, "Failed to check existing recording segment", 500);
+    }
+
+    if (existingSegment) {
+      return successResponse(res, existingSegment, "Recording segment already uploaded.");
+    }
+  }
+
   const parsedSegmentNumber = Number(segmentNumber || 1);
+  const requestedSegmentNumber = Number.isFinite(parsedSegmentNumber) && parsedSegmentNumber > 0
+    ? Math.floor(parsedSegmentNumber)
+    : 1;
+  let normalizedSegmentNumber: number;
+  try {
+    normalizedSegmentNumber = await getNextRecordingSegmentNumber(applicantAssessmentId, requestedSegmentNumber);
+  } catch (err) {
+    return errorResponse(res, "Failed to allocate recording segment", 500);
+  }
+  const uploadedAt = new Date().toISOString();
+  const startedAt = segmentStartedAt ? new Date(segmentStartedAt).toISOString() : uploadedAt;
+  const endedAt = segmentEndedAt ? new Date(segmentEndedAt).toISOString() : uploadedAt;
+  const fileName = createRecordingFileName(req.file.originalname, normalizedSegmentNumber);
+  let storagePath: string;
 
   try {
     storagePath = await uploadRecordingToStorage({
@@ -195,11 +285,17 @@ export const uploadApplicantRecordingService = async ({ body, params, query: req
   const recording = {
     id: `rec-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
     applicant_assessment_id: applicantAssessmentId,
+    segment_number: normalizedSegmentNumber,
+    client_segment_id: clientSegmentId ? String(clientSegmentId) : null,
     file_name: fileName,
     file_url: storagePath,
     file_size: req.file.size,
     duration: duration ? Number(duration) : 0,
-    uploaded_at: new Date().toISOString()
+    duration_seconds: duration ? Number(duration) : 0,
+    started_at: startedAt,
+    ended_at: endedAt,
+    upload_status: "UPLOADED",
+    uploaded_at: uploadedAt
   };
 
   try {
@@ -207,21 +303,106 @@ export const uploadApplicantRecordingService = async ({ body, params, query: req
     console.log("Recording metadata insert succeeded:", {
       applicantAssessmentId,
       recordingId: savedRecording.id,
-      segmentNumber: Number.isFinite(parsedSegmentNumber) ? parsedSegmentNumber : 1,
+      segmentNumber: normalizedSegmentNumber,
       fileName,
       storagePath,
       fileSize: req.file.size
     });
+    console.log("RECORDING_SEGMENT_UPLOADED", {
+      applicantAssessmentId,
+      recordingId: savedRecording.id,
+      segmentNumber: normalizedSegmentNumber,
+      timestamp: uploadedAt
+    });
+    await saveRecordingEvent({
+      applicantAssessmentId,
+      eventType: "RECORDING_SEGMENT_UPLOADED",
+      segmentNumber: normalizedSegmentNumber,
+      metadata: {
+        recordingId: savedRecording.id,
+        fileSize: req.file.size
+      }
+    });
     successResponse(res, savedRecording, "Recording uploaded and saved successfully!");
   } catch (err) {
+    if ((err as any)?.code === "23505") {
+      if (clientSegmentId) {
+        const { data: existingSegment } = await supabase
+          .from("recordings")
+          .select("*")
+          .eq("applicant_assessment_id", applicantAssessmentId)
+          .eq("client_segment_id", String(clientSegmentId))
+          .maybeSingle();
+
+        if (existingSegment) {
+          successResponse(res, existingSegment, "Recording segment already uploaded.");
+          return getResult();
+        }
+      }
+
+      try {
+        const retrySegmentNumber = await getNextRecordingSegmentNumber(applicantAssessmentId, normalizedSegmentNumber + 1);
+        const retryRecording = {
+          ...recording,
+          id: `rec-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+          segment_number: retrySegmentNumber
+        };
+        const savedRecording = await dbHelper.saveRecording(retryRecording);
+        console.log("Recording metadata insert succeeded after segment retry:", {
+          applicantAssessmentId,
+          recordingId: savedRecording.id,
+          originalSegmentNumber: normalizedSegmentNumber,
+          segmentNumber: retrySegmentNumber,
+          storagePath
+        });
+        successResponse(res, savedRecording, "Recording uploaded and saved successfully!");
+        return getResult();
+      } catch (retryErr) {
+        console.error("Recording metadata retry failed:", {
+          applicantAssessmentId,
+          originalSegmentNumber: normalizedSegmentNumber,
+          storagePath,
+          errorCode: (retryErr as any)?.code,
+          errorMessage: (retryErr as any)?.message,
+          errorDetails: (retryErr as any)?.details,
+          error: retryErr
+        });
+      }
+    }
+
     console.error("Recording upload metadata save failed:", {
       applicantAssessmentId,
+      segmentNumber: normalizedSegmentNumber,
+      clientSegmentId: clientSegmentId ? String(clientSegmentId) : null,
       fileName,
+      storagePath,
+      errorCode: (err as any)?.code,
+      errorMessage: (err as any)?.message,
+      errorDetails: (err as any)?.details,
       error: err
     });
     errorResponse(res, "Failed to save recording metadata", 500);
   }
 
+  return getResult();
+};
+
+export const logRecordingEventService = async ({ body, params, query: requestQuery, file }: ServiceRequest): Promise<ServiceResult> => {
+  const req = { body, params, query: requestQuery, file };
+  const { res, getResult } = createServiceResponder();
+  const { applicantAssessmentId, eventType, segmentNumber } = req.body;
+
+  if (!applicantAssessmentId || !eventType) {
+    return errorResponse(res, "applicantAssessmentId and eventType are required");
+  }
+
+  await saveRecordingEvent({
+    applicantAssessmentId,
+    eventType: String(eventType),
+    segmentNumber: segmentNumber ? Number(segmentNumber) : undefined
+  });
+
+  successResponse(res, null, "Recording event logged");
   return getResult();
 };
 

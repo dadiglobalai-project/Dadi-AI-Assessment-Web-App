@@ -247,6 +247,7 @@ export const getApplicantAssessmentService = async ({ body, params, query: reque
   }
 
   let answers: any[] = [];
+  let recordings: any[] = [];
   if (applicantVisibleRecord) {
     const { data: supabaseAnswers, error: answersError } = await supabase
       .from("answers")
@@ -264,6 +265,7 @@ export const getApplicantAssessmentService = async ({ body, params, query: reque
     }
 
     answers = supabaseAnswers ?? [];
+    recordings = await dbHelper.getRecordingsByApplicantAssessmentId(applicantVisibleRecord.id);
   }
 
   const data = {
@@ -288,6 +290,7 @@ export const getApplicantAssessmentService = async ({ body, params, query: reque
       startTime: applicantVisibleRecord.start_time,
       submittedAt: applicantVisibleRecord.submitted_at
     } : null,
+    recordings,
     answers: answers.reduce((acc: Record<string, string>, answer: any) => {
       acc[answer.question_id] = answer.answer_text || "";
       return acc;

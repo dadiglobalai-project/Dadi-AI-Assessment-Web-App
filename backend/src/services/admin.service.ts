@@ -116,6 +116,7 @@ export const listSubmissionsService = async ({ body, params, query: requestQuery
         startTime: aa.start_time,
         submittedAt: aa.submitted_at,
         recording: recordingsByAAId.get(aa.id)?.[0] ?? null,
+        recordings: recordingsByAAId.get(aa.id) ?? [],
         review: reviewsByAAId.get(aa.id)?.[0] ?? null,
         answersCount: answersByAAId.get(aa.id)?.length ?? 0
       };
@@ -161,13 +162,18 @@ export const getSubmissionDetailsService = async ({ body, params, query: request
       applicantResult,
       assessmentResult,
       answersResult,
-      recordingResult,
+      recordingsResult,
       reviewResult
     ] = await Promise.all([
       supabase.from("users").select("*").eq("id", aa.applicant_id).maybeSingle(),
       supabase.from("assessments").select("*").eq("id", aa.assessment_id).maybeSingle(),
       supabase.from("answers").select("*").eq("applicant_assessment_id", aa.id),
-      supabase.from("recordings").select("*").eq("applicant_assessment_id", aa.id).maybeSingle(),
+      supabase
+        .from("recordings")
+        .select("*")
+        .eq("applicant_assessment_id", aa.id)
+        .order("segment_number", { ascending: true })
+        .order("uploaded_at", { ascending: true }),
       supabase.from("reviews").select("*").eq("applicant_assessment_id", aa.id).maybeSingle()
     ]);
 
@@ -175,7 +181,7 @@ export const getSubmissionDetailsService = async ({ body, params, query: request
       { name: "users", result: applicantResult },
       { name: "assessments", result: assessmentResult },
       { name: "answers", result: answersResult },
-      { name: "recordings", result: recordingResult },
+      { name: "recordings", result: recordingsResult },
       { name: "reviews", result: reviewResult }
     ];
 
@@ -193,7 +199,8 @@ export const getSubmissionDetailsService = async ({ body, params, query: request
     const applicant = applicantResult.data;
     const assessment = assessmentResult.data;
     const answers = answersResult.data ?? [];
-    const recording = recordingResult.data ?? null;
+    const recordings = recordingsResult.data ?? [];
+    const recording = recordings[0] ?? null;
     const review = reviewResult.data ?? null;
     let questions = await getAssignedQuestionsForAttempt(aa.id);
     if (questions.length === 0) {
@@ -219,7 +226,7 @@ export const getSubmissionDetailsService = async ({ body, params, query: request
       applicantAssessmentId,
       submissionsCount: 1,
       answersCount: answers.length,
-      recordingsCount: recording ? 1 : 0
+      recordingsCount: recordings.length
     });
 
     // Map answers together with questions
@@ -241,6 +248,7 @@ export const getSubmissionDetailsService = async ({ body, params, query: request
       submittedAt: aa.submitted_at,
       questions: questionsAndAnswers,
       recording,
+      recordings,
       review
     };
 

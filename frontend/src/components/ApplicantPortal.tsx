@@ -35,6 +35,12 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
   const testActiveRef = useRef(false);
   const isSubmittingRef = useRef(false);
   const recordedChunks = useRef<Blob[]>([]);
+  const currentSegmentNumberRef = useRef(1);
+  const currentSegmentClientIdRef = useRef<string | null>(null);
+  const currentSegmentStartedAtRef = useRef<number | null>(null);
+  const uploadedRecordingIdsRef = useRef<string[]>([]);
+  const pendingRecordingUploadsRef = useRef<Promise<any | null>[]>([]);
+  const finalizingInterruptedSegmentRef = useRef(false);
   const answersRef = useRef<{ [qId: string]: string }>({});
   const pendingAutosavesRef = useRef<Map<string, Promise<boolean>>>(new Map());
 
@@ -112,6 +118,25 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
         if (data.data.statusRecord?.id && data.data.statusRecord.id !== statusRecord?.id) {
           setRecordingUploadComplete(false);
           setUploadedRecordingId(null);
+          uploadedRecordingIdsRef.current = [];
+          currentSegmentNumberRef.current = 1;
+          currentSegmentClientIdRef.current = null;
+          currentSegmentStartedAtRef.current = null;
+          recordedChunks.current = [];
+        }
+        if (Array.isArray(data.data.recordings)) {
+          const existingRecordingIds = data.data.recordings
+            .map((recording: any) => recording.id)
+            .filter(Boolean);
+          const highestSegmentNumber = data.data.recordings.reduce((highest: number, recording: any) => {
+            const segmentNumber = Number(recording.segment_number ?? 0);
+            return Number.isFinite(segmentNumber) ? Math.max(highest, segmentNumber) : highest;
+          }, 0);
+
+          uploadedRecordingIdsRef.current = existingRecordingIds;
+          setUploadedRecordingId(existingRecordingIds[existingRecordingIds.length - 1] ?? null);
+          setRecordingUploadComplete(existingRecordingIds.length > 0);
+          currentSegmentNumberRef.current = highestSegmentNumber + 1;
         }
         setStatusRecord(data.data.statusRecord);
         if (data.data.answers || data.data.questions) {
@@ -180,9 +205,36 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
     return Boolean(recorder && recorder.state === 'recording' && isScreenStreamLive());
   };
 
+  const logRecordingEvent = (eventType: string, segmentNumber = currentSegmentNumberRef.current, overrideApplicantAssessmentId?: string) => {
+    const applicantAssessmentId = overrideApplicantAssessmentId ?? statusRecord?.id;
+    if (!applicantAssessmentId) return;
+
+    fetch(apiUrl('/api/applicant/recording/event'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        applicantAssessmentId,
+        eventType,
+        segmentNumber
+      })
+    }).catch(err => {
+      console.warn("Recording event log failed:", { eventType, err });
+    });
+  };
+
   const requestScreenSharing = async () => {
     setErrorMsg(null);
     try {
+      if (pendingRecordingUploadsRef.current.length > 0) {
+        setUploadProgress("Saving previous recording segment...");
+        const results = await Promise.all(pendingRecordingUploadsRef.current);
+        setUploadProgress(null);
+        if (results.some(result => !result)) {
+          setErrorMsg("The previous recording segment could not upload. Please check your connection and try again.");
+          return;
+        }
+      }
+
       // Prompt with maximum cross-browser settings
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
@@ -208,7 +260,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       setRecordingUploadComplete(false);
 
       if (statusRecord?.status === 'IN_PROGRESS') {
-        const recorderStarted = startMediaRecorder(stream, { resetChunks: false });
+        const recorderStarted = startMediaRecorder(stream, { resetChunks: true });
         if (!recorderStarted || !hasActiveRecording()) {
           stopRecordingResources();
           setErrorMsg("Screen recording could not be restored. Please try sharing your screen again.");
@@ -229,22 +281,39 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
   };
 
   const handleScreenShareInterrupted = () => {
-    const recorder = mediaRecorderRef.current;
-    if (recorder && recorder.state !== 'inactive') {
-      try {
-        recorder.requestData();
-      } catch (err) {
-        console.warn("Unable to flush interrupted recording data:", err);
-      }
-      recorder.stop();
+    if (finalizingInterruptedSegmentRef.current) {
+      return;
     }
-    mediaRecorderRef.current = null;
+    finalizingInterruptedSegmentRef.current = true;
     setRecordingActive(false);
     setRecordingPermission(false);
     setScreenStream(null);
     screenStreamRef.current = null;
+    setTestActive(false);
     if (testActiveRef.current && !isSubmittingRef.current) {
       setErrorMsg("Screen sharing was stopped. Please restore screen sharing before answering or submitting.");
+    }
+      console.log("SCREEN_SHARE_STOPPED", {
+        applicantAssessmentId: statusRecord?.id ?? null,
+        segmentNumber: currentSegmentNumberRef.current,
+        timestamp: new Date().toISOString()
+      });
+      logRecordingEvent("SCREEN_SHARE_STOPPED");
+
+    if (statusRecord?.id && !isSubmittingRef.current) {
+      const uploadPromise = uploadCurrentRecording(statusRecord.id, { stopStream: false })
+        .catch(err => {
+          console.error("Interrupted recording segment upload failed:", err);
+          setSubmitValidationMessage("Screen sharing stopped. The last recording segment could not upload yet. Please check your connection and try restoring screen sharing.");
+          return null;
+        });
+      pendingRecordingUploadsRef.current.push(uploadPromise);
+      uploadPromise.finally(() => {
+        pendingRecordingUploadsRef.current = pendingRecordingUploadsRef.current.filter(promise => promise !== uploadPromise);
+        finalizingInterruptedSegmentRef.current = false;
+      });
+    } else {
+      finalizingInterruptedSegmentRef.current = false;
     }
   };
 
@@ -252,6 +321,16 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
     setErrorMsg(null);
     setSubmitValidationMessage(null);
     try {
+      if (pendingRecordingUploadsRef.current.length > 0) {
+        setUploadProgress("Saving previous recording segment...");
+        const results = await Promise.all(pendingRecordingUploadsRef.current);
+        setUploadProgress(null);
+        if (results.some(result => !result)) {
+          setErrorMsg("The previous recording segment could not upload. Please check your connection and try again.");
+          return;
+        }
+      }
+
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
         audio: false
@@ -273,12 +352,18 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       setRecordingPermission(true);
       setRecordingUploadComplete(false);
 
-      const recorderStarted = startMediaRecorder(stream, { resetChunks: false });
+      const recorderStarted = startMediaRecorder(stream, { resetChunks: true });
       if (!recorderStarted || !hasActiveRecording()) {
         stopRecordingResources();
         setErrorMsg("Screen recording could not be restored. Please try sharing your screen again.");
         return;
       }
+      console.log("SCREEN_SHARE_RESTORED", {
+        applicantAssessmentId: statusRecord?.id ?? null,
+        segmentNumber: currentSegmentNumberRef.current,
+        timestamp: new Date().toISOString()
+      });
+      logRecordingEvent("SCREEN_SHARE_RESTORED");
     } catch (err) {
       console.error("Screen share restore failed:", err);
       setErrorMsg("Screen sharing is required to continue. Please restore screen sharing.");
@@ -313,6 +398,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       
       if (res.ok && data.success) {
         setStatusRecord(data.data);
+        logRecordingEvent("SCREEN_SHARE_STARTED", currentSegmentNumberRef.current, data.data.id);
 
         const reloaded = await fetchAssessmentData({ showLoading: false });
         if (!reloaded) {
@@ -346,6 +432,11 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       if (options.resetChunks) {
         recordedChunks.current = [];
       }
+      currentSegmentStartedAtRef.current = Date.now();
+      currentSegmentClientIdRef.current = currentSegmentClientIdRef.current
+        ?? `seg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      setRecordingUploadComplete(false);
+      setUploadedRecordingId(null);
 
       let recorder: MediaRecorder;
 
@@ -399,6 +490,12 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       setRecordingActive(recorder.state === 'recording');
       setRecordingStartTime(prev => (options.resetChunks ? Date.now() : prev ?? Date.now()));
 
+      console.log("SCREEN_SHARE_STARTED", {
+        applicantAssessmentId: statusRecord?.id ?? null,
+        segmentNumber: currentSegmentNumberRef.current,
+        timestamp: new Date().toISOString()
+      });
+      logRecordingEvent("SCREEN_SHARE_STARTED");
       console.log("MediaRecorder started:", recorder.state);
       return recorder.state === 'recording';
     } catch (err) {
@@ -452,20 +549,25 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
     mediaRecorderRef.current = null;
   };
 
-  const uploadCurrentRecording = async (applicantAssessmentId: string) => {
-    const recordingDurationSeconds = recordingStartTime
-      ? Math.max(0, Math.floor((Date.now() - recordingStartTime) / 1000))
+  const uploadCurrentRecording = async (applicantAssessmentId: string, options: { stopStream?: boolean } = {}) => {
+    const segmentStartedAt = currentSegmentStartedAtRef.current ?? recordingStartTime ?? Date.now();
+    const segmentEndedAt = Date.now();
+    const recordingDurationSeconds = segmentStartedAt
+      ? Math.max(0, Math.floor((segmentEndedAt - segmentStartedAt) / 1000))
       : 0;
+    const segmentNumber = currentSegmentNumberRef.current;
+    const clientSegmentId = currentSegmentClientIdRef.current
+      ?? `seg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
     await stopMediaRecorderAndCollectChunks();
 
     const stream = screenStreamRef.current;
-    if (stream) {
+    if (stream && options.stopStream !== false) {
       stream.getTracks().forEach(track => track.stop());
+      screenStreamRef.current = null;
+      setScreenStream(null);
+      setRecordingPermission(false);
     }
-    screenStreamRef.current = null;
-    setScreenStream(null);
-    setRecordingPermission(false);
     setRecordingActive(false);
 
     if (recordedChunks.current.length === 0) {
@@ -477,7 +579,6 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       throw new Error("Screen recording is empty. Please restore screen sharing and try again.");
     }
 
-    const segmentNumber = 1;
     const videoFile = new File([videoBlob], `screen-record-${applicantAssessmentId}-segment-${segmentNumber}.webm`, { type: 'video/webm' });
     console.log("Recording final blob prepared:", {
       applicantAssessmentId,
@@ -490,6 +591,9 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
     formData.append('applicantAssessmentId', applicantAssessmentId);
     formData.append('duration', recordingDurationSeconds.toString());
     formData.append('segmentNumber', segmentNumber.toString());
+    formData.append('clientSegmentId', clientSegmentId);
+    formData.append('segmentStartedAt', new Date(segmentStartedAt).toISOString());
+    formData.append('segmentEndedAt', new Date(segmentEndedAt).toISOString());
 
     const uploadRes = await fetch(apiUrl('/api/applicant/recording/upload'), {
       method: 'POST',
@@ -514,7 +618,14 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
     });
 
     setUploadedRecordingId(recordingId);
+    uploadedRecordingIdsRef.current = uploadedRecordingIdsRef.current.includes(recordingId)
+      ? uploadedRecordingIdsRef.current
+      : [...uploadedRecordingIdsRef.current, recordingId];
     setRecordingUploadComplete(true);
+    recordedChunks.current = [];
+    currentSegmentStartedAtRef.current = null;
+    currentSegmentClientIdRef.current = null;
+    currentSegmentNumberRef.current = segmentNumber + 1;
     return uploadResult.data;
   };
 
@@ -732,7 +843,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
 
   const submitAssessment = async (finalStatus: 'SUBMITTED' | 'EXPIRED') => {
     if (!statusRecord) return;
-    if (!hasActiveRecording() && !recordingUploadComplete) {
+    if (!hasActiveRecording()) {
       setSubmitValidationMessage("Screen sharing must be active before you can submit.");
       setErrorMsg("Screen sharing was stopped. Please restore screen sharing before submitting.");
       return;
@@ -766,22 +877,33 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
         return;
       }
 
+      if (pendingRecordingUploadsRef.current.length > 0) {
+        setUploadProgress("Waiting for saved recording segments...");
+        const segmentUploadResults = await Promise.all(pendingRecordingUploadsRef.current);
+        if (segmentUploadResults.some(result => !result)) {
+          throw new Error("A previous recording segment could not upload. Please check your connection and try again before submitting.");
+        }
+      }
+
       let recordingIdForSubmit = uploadedRecordingId;
       if (!recordingUploadComplete || !recordingIdForSubmit) {
         setUploadProgress("Compiling and uploading screen recording...");
         const uploadedRecording = await uploadCurrentRecording(statusRecord.id);
         recordingIdForSubmit = uploadedRecording.id;
       }
+      const recordingIdsForSubmit = recordingIdForSubmit
+        ? Array.from(new Set([...uploadedRecordingIdsRef.current, recordingIdForSubmit]))
+        : uploadedRecordingIdsRef.current;
 
       setUploadProgress("Finalizing answers...");
 
-      const submitFinalAssessment = async (recordingId: string | null) => {
+      const submitFinalAssessment = async (recordingIds: string[]) => {
         const submitRes = await fetch(apiUrl('/api/applicant/assessment/submit'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             applicantAssessmentId: statusRecord.id,
-            recordingId,
+            recordingIds,
             status: finalStatus
           })
         });
@@ -789,7 +911,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
         return { submitRes, submitData };
       };
 
-      let { submitRes, submitData } = await submitFinalAssessment(recordingIdForSubmit);
+      let { submitRes, submitData } = await submitFinalAssessment(recordingIdsForSubmit);
 
       if ((!submitRes.ok || !submitData.success) && submitData.code === 'RECORDING_REQUIRED') {
         console.warn("Recording validation failed after upload; retrying recording upload once.", {
@@ -799,10 +921,12 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
         });
         setRecordingUploadComplete(false);
         setUploadedRecordingId(null);
-        setUploadProgress("Re-uploading screen recording...");
-        const uploadedRecording = await uploadCurrentRecording(statusRecord.id);
-        recordingIdForSubmit = uploadedRecording.id;
-        ({ submitRes, submitData } = await submitFinalAssessment(recordingIdForSubmit));
+        if (recordedChunks.current.length > 0) {
+          setUploadProgress("Re-uploading screen recording...");
+          const uploadedRecording = await uploadCurrentRecording(statusRecord.id);
+          recordingIdForSubmit = uploadedRecording.id;
+          ({ submitRes, submitData } = await submitFinalAssessment(Array.from(new Set([...recordingIdsForSubmit, recordingIdForSubmit]))));
+        }
       }
 
       if (!submitRes.ok || !submitData.success) {
@@ -853,8 +977,8 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
   };
 
   const evaluationQuestionCount = Number(assessment?.questionsCount ?? questions.length ?? 0);
-  const answeringLocked = stage === 'test' && !recordingUploadComplete && !recordingActive;
-  const submitDisabled = Boolean(uploadProgress) || (!recordingUploadComplete && !recordingActive);
+  const answeringLocked = stage === 'test' && !recordingActive;
+  const submitDisabled = Boolean(uploadProgress) || !recordingActive;
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col" id="applicant-portal">

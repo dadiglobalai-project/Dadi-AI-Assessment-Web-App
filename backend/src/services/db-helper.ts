@@ -425,6 +425,20 @@ export const dbHelper = {
 
     return data;
   },
+  getRecordingsByApplicantAssessmentId: async (aaId: string) => {
+    const { data, error } = await getSupabaseClient()
+      .from("recordings")
+      .select("*")
+      .eq("applicant_assessment_id", aaId)
+      .order("segment_number", { ascending: true })
+      .order("uploaded_at", { ascending: true });
+
+    if (error) {
+      throw error;
+    }
+
+    return data ?? [];
+  },
   saveRecording: async (recording: any) => {
     const { data, error } = await getSupabaseClient()
       .from("recordings")

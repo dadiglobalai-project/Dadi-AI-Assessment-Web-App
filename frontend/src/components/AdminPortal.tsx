@@ -73,7 +73,7 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
   // Video player controls
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [playbackRate, setPlaybackRate] = useState<number>(1);
-  const [recordingSignedUrl, setRecordingSignedUrl] = useState<string | null>(null);
+  const [recordingSignedUrls, setRecordingSignedUrls] = useState<Record<string, string>>({});
   const [recordingUrlLoading, setRecordingUrlLoading] = useState(false);
   const [recordingUrlError, setRecordingUrlError] = useState<string | null>(null);
 
@@ -101,9 +101,13 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
   }, [selectedAssessment?.id]);
 
   useEffect(() => {
-    const recordingId = submissionDetails?.recording?.id;
-    if (!recordingId) {
-      setRecordingSignedUrl(null);
+    const recordings = Array.isArray(submissionDetails?.recordings)
+      ? submissionDetails.recordings
+      : submissionDetails?.recording
+        ? [submissionDetails.recording]
+        : [];
+    if (recordings.length === 0) {
+      setRecordingSignedUrls({});
       setRecordingUrlLoading(false);
       setRecordingUrlError(null);
       return;
@@ -115,19 +119,22 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
       try {
         setRecordingUrlLoading(true);
         setRecordingUrlError(null);
-        setRecordingSignedUrl(null);
-        const res = await fetch(apiUrl(`/api/admin/recordings/${recordingId}/url`));
-        const data = await res.json();
-        if (!data.success) {
-          throw new Error(data.message || "Failed to load recording URL");
-        }
+        setRecordingSignedUrls({});
+        const signedUrlEntries = await Promise.all(recordings.map(async (recording: any) => {
+          const res = await fetch(apiUrl(`/api/admin/recordings/${recording.id}/url`));
+          const data = await res.json();
+          if (!data.success) {
+            throw new Error(data.message || "Failed to load recording URL");
+          }
+          return [recording.id, data.data.signedUrl] as const;
+        }));
 
         if (!isCancelled) {
-          setRecordingSignedUrl(data.data.signedUrl);
+          setRecordingSignedUrls(Object.fromEntries(signedUrlEntries));
         }
       } catch (err) {
         console.error("Error fetching recording signed URL:", {
-          recordingId,
+          recordingIds: recordings.map((recording: any) => recording.id),
           error: err
         });
         if (!isCancelled) {
@@ -145,7 +152,7 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
     return () => {
       isCancelled = true;
     };
-  }, [submissionDetails?.recording?.id]);
+  }, [submissionDetails?.recording?.id, submissionDetails?.recordings]);
 
   const fetchRoles = async () => {
     try {
@@ -734,7 +741,7 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
       if (selectedSubmissionId === submissionId) {
         setSelectedSubmissionId(null);
         setSubmissionDetails(null);
-        setRecordingSignedUrl(null);
+        setRecordingSignedUrls({});
       }
       setSubmissionPendingDelete(null);
       setDeleteApplicantAccount(false);
@@ -1148,7 +1155,7 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
                       <div className="bg-slate-900 rounded-xl overflow-hidden aspect-video border border-slate-800 flex flex-col justify-between" id="video-wrapper">
                         <video
                           ref={videoRef}
-                          src={recordingSignedUrl ?? undefined}
+                          src={recordingSignedUrls[submissionDetails.recording.id] ?? undefined}
                           controls
                           className="w-full h-full object-contain bg-black"
                           onLoadedMetadata={() => {
@@ -1229,6 +1236,37 @@ export default function AdminPortal({ adminUser, onLogout }: AdminPortalProps) {
                           <span>File: {submissionDetails.recording.file_name}</span>
                           <span>Duration: {Math.floor(submissionDetails.recording.duration / 60)}m {submissionDetails.recording.duration % 60}s</span>
                         </div>
+
+                        {Array.isArray(submissionDetails.recordings) && submissionDetails.recordings.length > 1 && (
+                          <div className="bg-white border-t border-slate-200 p-4 space-y-3">
+                            <p className="text-xs font-bold text-gray-900">Recording Segments</p>
+                            {submissionDetails.recordings.map((recording: any, index: number) => {
+                              const duration = Number(recording.duration_seconds ?? recording.duration ?? 0);
+                              const segmentNumber = Number(recording.segment_number ?? index + 1);
+                              return (
+                                <div key={recording.id} className="rounded-lg border border-gray-200 p-3 text-xs text-gray-600 space-y-2">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <span className="font-bold text-gray-900">Recording Part {segmentNumber}</span>
+                                    <a
+                                      href={recordingSignedUrls[recording.id] ?? undefined}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className={`font-bold ${recordingSignedUrls[recording.id] ? 'text-indigo-600 hover:text-indigo-700' : 'pointer-events-none text-gray-400'}`}
+                                    >
+                                      Playback Link
+                                    </a>
+                                  </div>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-1 font-mono">
+                                    <span>Started: {recording.started_at ? new Date(recording.started_at).toLocaleString() : 'Unavailable'}</span>
+                                    <span>Ended: {recording.ended_at ? new Date(recording.ended_at).toLocaleString() : 'Unavailable'}</span>
+                                    <span>Duration: {Math.floor(duration / 60)}m {duration % 60}s</span>
+                                    <span>Status: {recording.upload_status ?? 'UPLOADED'}</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center bg-gray-50 text-gray-400">

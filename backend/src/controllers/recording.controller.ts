@@ -1,7 +1,8 @@
 import type { Request, Response } from "express";
 import {
   uploadApplicantRecordingService,
-  getRecordingSignedUrlService
+  getRecordingSignedUrlService,
+  logRecordingEventService
 } from "../services/recording.service";
 import { isBlockedAssessmentDevice, unsupportedAssessmentDeviceBody } from "../utils/device";
 
@@ -18,6 +19,20 @@ export const uploadApplicantRecording = async (req: Request, res: Response) => {
   }
 
   const result = await uploadApplicantRecordingService({
+    body: req.body,
+    params: req.params,
+    query: req.query,
+    file: req.file
+  });
+  return sendServiceResult(res, result);
+};
+
+export const logRecordingEvent = async (req: Request, res: Response) => {
+  if (isBlockedAssessmentDevice(req.headers)) {
+    return res.status(403).json(unsupportedAssessmentDeviceBody());
+  }
+
+  const result = await logRecordingEventService({
     body: req.body,
     params: req.params,
     query: req.query,
