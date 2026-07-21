@@ -141,7 +141,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
               } else {
                 setStage('recording-consent');
                 setTestActive(false);
-                setErrorMsg("Screen sharing must be restored before you can continue this in-progress assessment.");
+                setErrorMsg("Your assessment is still in progress. Please share your screen again to continue.");
               }
             }
           }
@@ -198,9 +198,24 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       screenStreamRef.current = stream;
       setRecordingPermission(true);
       setRecordingUploadComplete(false);
+
+      if (statusRecord?.status === 'IN_PROGRESS') {
+        const recorderStarted = startMediaRecorder(stream, { resetChunks: false });
+        if (!recorderStarted || !hasActiveRecording()) {
+          stopRecordingResources();
+          setErrorMsg("Screen recording could not be restored. Please try sharing your screen again.");
+          return;
+        }
+
+        setErrorMsg(null);
+        setStage('test');
+        setTestActive(true);
+      }
     } catch (err: any) {
       console.error("Screen share permission failed:", err);
       setRecordingPermission(false);
+      setStage('recording-consent');
+      setTestActive(false);
       setErrorMsg("Screen recording permission is required to proceed. Please click the button and select a screen/tab to share.");
     }
   };
@@ -697,7 +712,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
             <Loader2 className="h-10 w-10 animate-spin mx-auto text-brand-green mb-4" />
             <p className="text-sm font-semibold text-gray-600">Retrieving assessment parameters...</p>
           </div>
-        ) : errorMsg && stage !== 'test' ? (
+        ) : errorMsg && stage !== 'test' && stage !== 'recording-consent' ? (
           <div className="bg-white border border-red-100 rounded-2xl p-8 text-center max-w-md mx-auto shadow-sm space-y-4">
             <ShieldAlert className="h-12 w-12 text-rose-500 mx-auto" />
             <h2 className="text-xl font-bold text-gray-900">Access Restricted</h2>
@@ -813,6 +828,9 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
 
                     {errorMsg && (
                       <div className="p-3.5 bg-red-50 border border-red-100 text-red-700 rounded-xl text-xs font-medium">
+                        {statusRecord?.status === 'IN_PROGRESS' && (
+                          <p className="font-bold text-red-800 mb-1">Screen Sharing Required</p>
+                        )}
                         {errorMsg}
                       </div>
                     )}
@@ -829,6 +847,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
                   <button
                     disabled={!recordingPermission || !isScreenStreamLive() || startingAssessment}
                     onClick={handleStartAssessment}
+                    hidden={statusRecord?.status === 'IN_PROGRESS'}
                     className="flex-1 py-3 bg-brand-green hover:bg-brand-green/90 disabled:bg-brand-green/50 text-white rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all shadow-sm"
                   >
                     {startingAssessment ? (

@@ -17,6 +17,8 @@ export default function ApplicantAuth({ inviteToken, initialMode = 'register', o
   const [name, setName] = useState('');
   const [appliedRoleId, setAppliedRoleId] = useState('');
   const [roles, setRoles] = useState<{ id: string, role_name: string, description?: string }[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(false);
+  const [rolesError, setRolesError] = useState<string | null>(null);
   
   // Invitation validation states
   const [invitationValidating, setInvitationValidating] = useState(!!inviteToken);
@@ -30,13 +32,27 @@ export default function ApplicantAuth({ inviteToken, initialMode = 'register', o
   useEffect(() => {
     const fetchRoles = async () => {
       try {
+        setRolesLoading(true);
+        setRolesError(null);
         const res = await fetch(apiUrl('/api/roles'), { cache: 'no-store' });
         const data = await res.json();
-        if (data.success) {
-          setRoles(data.data.filter((r: any) => r.status !== 'INACTIVE'));
+
+        if (!res.ok || !data.success || !Array.isArray(data.data)) {
+          throw new Error(data.message || 'Unable to load available positions.');
+        }
+
+        const activeRoles = data.data.filter((r: any) => r.status !== 'INACTIVE');
+        setRoles(activeRoles);
+
+        if (activeRoles.length === 0) {
+          setRolesError('No active positions are available right now. Please contact the hiring coordinator.');
         }
       } catch (err) {
         console.error("Error fetching roles:", err);
+        setRoles([]);
+        setRolesError(err instanceof Error ? err.message : 'Unable to load positions. Please refresh the page or contact support.');
+      } finally {
+        setRolesLoading(false);
       }
     };
     fetchRoles();
@@ -274,11 +290,18 @@ export default function ApplicantAuth({ inviteToken, initialMode = 'register', o
                     required
                     value={appliedRoleId}
                     onChange={(e) => setAppliedRoleId(e.target.value)}
-                    disabled={!!(invitationDetails && invitationDetails.role_id)}
+                    disabled={rolesLoading || !!rolesError || !!(invitationDetails && invitationDetails.role_id)}
                     className="block w-full px-3 py-2.5 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-green focus:border-brand-green text-sm font-medium disabled:bg-gray-100 disabled:text-gray-500 cursor-pointer transition-all"
                     id="applied-role-select"
                   >
-                    <option value="">Select a role / position...</option>
+                    <option value="">
+                      {rolesLoading ? 'Loading positions...' : 'Select a role / position...'}
+                    </option>
+                    {invitationDetails?.role_id && !roles.some(r => r.id === invitationDetails.role_id) && (
+                      <option value={invitationDetails.role_id}>
+                        {invitationDetails.role_name || 'Assigned position'}
+                      </option>
+                    )}
                     {roles.map((r) => (
                       <option key={r.id} value={r.id}>
                         {r.role_name}
@@ -289,6 +312,11 @@ export default function ApplicantAuth({ inviteToken, initialMode = 'register', o
                 {invitationDetails && invitationDetails.role_id && (
                   <p className="mt-1 text-[11px] text-gray-400 italic">
                     Role locked based on invitation link.
+                  </p>
+                )}
+                {rolesError && !invitationDetails?.role_id && (
+                  <p className="mt-2 text-xs font-medium text-red-600">
+                    {rolesError}
                   </p>
                 )}
               </div>
