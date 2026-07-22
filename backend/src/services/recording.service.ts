@@ -228,6 +228,16 @@ export const uploadApplicantRecordingService = async ({ body, params, query: req
   const req = { body, params, query: requestQuery, file };
   const { res, getResult } = createServiceResponder();
 
+  console.log("Recording MIME trace: Multer parsed upload", {
+    originalname: req.file?.originalname ?? null,
+    mimetype: req.file?.mimetype ?? null,
+    size: req.file?.size ?? null,
+    fieldname: req.file?.fieldname ?? null,
+    encoding: req.file?.encoding ?? null,
+    body: req.body,
+    timestamp: new Date().toISOString()
+  });
+
   const { applicantAssessmentId, duration, segmentNumber, segmentStartedAt, segmentEndedAt, clientSegmentId } = req.body;
   if (!applicantAssessmentId || !req.file) {
     return errorResponse(res, "applicantAssessmentId and video file are required");
