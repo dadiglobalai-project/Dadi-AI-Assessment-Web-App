@@ -308,6 +308,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       const uploadPromise = uploadCurrentRecording(activeStatusRecord.id, { stopStream: false })
         .catch(err => {
           console.error("Interrupted recording segment upload failed:", err);
+          logRecordingEvent("RECORDING_SEGMENT_UPLOAD_FAILED");
           setSubmitValidationMessage("Screen sharing stopped. The last recording segment could not upload yet. Please check your connection and try restoring screen sharing.");
           return null;
         });
@@ -536,7 +537,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
 
     if (recorder.state === 'inactive') {
       mediaRecorderRef.current = null;
-      await new Promise(resolve => setTimeout(resolve, 250));
+      await new Promise(resolve => setTimeout(resolve, 1000));
       return;
     }
 
@@ -546,7 +547,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       const finish = () => {
         if (resolved) return;
         resolved = true;
-        setTimeout(resolve, 250);
+        setTimeout(resolve, 1000);
       };
 
       const stopTimeout = window.setTimeout(finish, 3000);
@@ -578,6 +579,14 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
     mediaRecorderRef.current = null;
   };
 
+  const waitForRecordedChunks = async () => {
+    if (recordedChunks.current.length > 0) {
+      return;
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 1500));
+  };
+
   const uploadCurrentRecording = async (applicantAssessmentId: string, options: { stopStream?: boolean } = {}) => {
     const segmentStartedAt = currentSegmentStartedAtRef.current ?? recordingStartTime ?? Date.now();
     const segmentEndedAt = Date.now();
@@ -589,6 +598,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       ?? `seg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
     await stopMediaRecorderAndCollectChunks();
+    await waitForRecordedChunks();
 
     const stream = screenStreamRef.current;
     if (stream && options.stopStream !== false) {
@@ -599,12 +609,13 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
     }
     setRecordingActive(false);
 
-    if (recordedChunks.current.length === 0) {
+    const chunksForUpload = [...recordedChunks.current];
+    if (chunksForUpload.length === 0) {
       throw new Error("Screen recording is missing. Please restore screen sharing and try again.");
     }
 
     const recordingMimeType = mediaRecorderMimeTypeRef.current || 'video/webm';
-    const videoBlob = new Blob(recordedChunks.current, { type: recordingMimeType });
+    const videoBlob = new Blob(chunksForUpload, { type: recordingMimeType });
     if (videoBlob.size === 0) {
       throw new Error("Screen recording is empty. Please restore screen sharing and try again.");
     }
@@ -614,7 +625,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       applicantAssessmentId,
       segmentNumber,
       blobSize: videoBlob.size,
-      chunks: recordedChunks.current.length
+      chunks: chunksForUpload.length
     });
     const formData = new FormData();
     formData.append('video', videoFile);
@@ -956,6 +967,13 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
           const uploadedRecording = await uploadCurrentRecording(statusRecord.id);
           recordingIdForSubmit = uploadedRecording.id;
           ({ submitRes, submitData } = await submitFinalAssessment(Array.from(new Set([...recordingIdsForSubmit, recordingIdForSubmit]))));
+        } else {
+          setSubmitValidationMessage(submitData.message || "Screen recording could not be uploaded. Please restore screen sharing before submitting.");
+          setErrorMsg("Screen recording is missing or was not saved. Please restore screen sharing and try again.");
+          isSubmittingRef.current = false;
+          setUploadProgress(null);
+          setTestActive(true);
+          return;
         }
       }
 
