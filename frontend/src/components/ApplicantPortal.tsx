@@ -34,6 +34,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const testActiveRef = useRef(false);
   const isSubmittingRef = useRef(false);
+  const statusRecordRef = useRef<any | null>(null);
   const recordedChunks = useRef<Blob[]>([]);
   const currentSegmentNumberRef = useRef(1);
   const currentSegmentClientIdRef = useRef<string | null>(null);
@@ -138,6 +139,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
           setRecordingUploadComplete(existingRecordingIds.length > 0);
           currentSegmentNumberRef.current = highestSegmentNumber + 1;
         }
+        statusRecordRef.current = data.data.statusRecord;
         setStatusRecord(data.data.statusRecord);
         if (data.data.answers || data.data.questions) {
           const restoredAnswers = { ...(data.data.answers || {}) };
@@ -206,7 +208,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
   };
 
   const logRecordingEvent = (eventType: string, segmentNumber = currentSegmentNumberRef.current, overrideApplicantAssessmentId?: string) => {
-    const applicantAssessmentId = overrideApplicantAssessmentId ?? statusRecord?.id;
+    const applicantAssessmentId = overrideApplicantAssessmentId ?? statusRecordRef.current?.id ?? statusRecord?.id;
     if (!applicantAssessmentId) return;
 
     fetch(apiUrl('/api/applicant/recording/event'), {
@@ -259,7 +261,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       setRecordingPermission(true);
       setRecordingUploadComplete(false);
 
-      if (statusRecord?.status === 'IN_PROGRESS') {
+      if ((statusRecordRef.current ?? statusRecord)?.status === 'IN_PROGRESS') {
         const recorderStarted = startMediaRecorder(stream, { resetChunks: true });
         if (!recorderStarted || !hasActiveRecording()) {
           stopRecordingResources();
@@ -293,15 +295,16 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
     if (testActiveRef.current && !isSubmittingRef.current) {
       setErrorMsg("Screen sharing was stopped. Please restore screen sharing before answering or submitting.");
     }
-      console.log("SCREEN_SHARE_STOPPED", {
-        applicantAssessmentId: statusRecord?.id ?? null,
-        segmentNumber: currentSegmentNumberRef.current,
-        timestamp: new Date().toISOString()
-      });
-      logRecordingEvent("SCREEN_SHARE_STOPPED");
+    const activeStatusRecord = statusRecordRef.current ?? statusRecord;
+    console.log("SCREEN_SHARE_STOPPED", {
+      applicantAssessmentId: activeStatusRecord?.id ?? null,
+      segmentNumber: currentSegmentNumberRef.current,
+      timestamp: new Date().toISOString()
+    });
+    logRecordingEvent("SCREEN_SHARE_STOPPED");
 
-    if (statusRecord?.id && !isSubmittingRef.current) {
-      const uploadPromise = uploadCurrentRecording(statusRecord.id, { stopStream: false })
+    if (activeStatusRecord?.id && !isSubmittingRef.current) {
+      const uploadPromise = uploadCurrentRecording(activeStatusRecord.id, { stopStream: false })
         .catch(err => {
           console.error("Interrupted recording segment upload failed:", err);
           setSubmitValidationMessage("Screen sharing stopped. The last recording segment could not upload yet. Please check your connection and try restoring screen sharing.");
@@ -359,7 +362,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
         return;
       }
       console.log("SCREEN_SHARE_RESTORED", {
-        applicantAssessmentId: statusRecord?.id ?? null,
+        applicantAssessmentId: statusRecordRef.current?.id ?? statusRecord?.id ?? null,
         segmentNumber: currentSegmentNumberRef.current,
         timestamp: new Date().toISOString()
       });
@@ -397,6 +400,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       const data = await res.json();
       
       if (res.ok && data.success) {
+        statusRecordRef.current = data.data;
         setStatusRecord(data.data);
         logRecordingEvent("SCREEN_SHARE_STARTED", currentSegmentNumberRef.current, data.data.id);
 
@@ -491,7 +495,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       setRecordingStartTime(prev => (options.resetChunks ? Date.now() : prev ?? Date.now()));
 
       console.log("SCREEN_SHARE_STARTED", {
-        applicantAssessmentId: statusRecord?.id ?? null,
+        applicantAssessmentId: statusRecordRef.current?.id ?? statusRecord?.id ?? null,
         segmentNumber: currentSegmentNumberRef.current,
         timestamp: new Date().toISOString()
       });
