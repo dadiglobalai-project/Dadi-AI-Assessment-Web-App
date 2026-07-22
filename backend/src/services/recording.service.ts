@@ -44,10 +44,12 @@ export const uploadRecordingToStorage = async ({
     applicantAssessmentId
   });
 
+  const normalizedContentType = (contentType || "video/webm").split(";")[0] || "video/webm";
+
   const { data, error } = await supabase.storage
     .from(RECORDINGS_BUCKET)
     .upload(storagePath, buffer, {
-      contentType: contentType || "video/webm",
+      contentType: normalizedContentType,
       upsert: false
     });
 
@@ -390,7 +392,7 @@ export const uploadApplicantRecordingService = async ({ body, params, query: req
 export const logRecordingEventService = async ({ body, params, query: requestQuery, file }: ServiceRequest): Promise<ServiceResult> => {
   const req = { body, params, query: requestQuery, file };
   const { res, getResult } = createServiceResponder();
-  const { applicantAssessmentId, eventType, segmentNumber } = req.body;
+  const { applicantAssessmentId, eventType, segmentNumber, metadata } = req.body;
 
   if (!applicantAssessmentId || !eventType) {
     return errorResponse(res, "applicantAssessmentId and eventType are required");
@@ -399,7 +401,8 @@ export const logRecordingEventService = async ({ body, params, query: requestQue
   await saveRecordingEvent({
     applicantAssessmentId,
     eventType: String(eventType),
-    segmentNumber: segmentNumber ? Number(segmentNumber) : undefined
+    segmentNumber: segmentNumber ? Number(segmentNumber) : undefined,
+    metadata: metadata && typeof metadata === "object" ? metadata : {}
   });
 
   successResponse(res, null, "Recording event logged");
