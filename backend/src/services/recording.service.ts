@@ -41,7 +41,10 @@ export const uploadRecordingToStorage = async ({
   console.log("Supabase Storage recording upload starting:", {
     bucket: RECORDINGS_BUCKET,
     storagePath,
-    applicantAssessmentId
+    applicantAssessmentId,
+    fileSize: buffer.length,
+    contentType,
+    normalizedContentType: (contentType || "video/webm").split(";")[0] || "video/webm"
   });
 
   const normalizedContentType = (contentType || "video/webm").split(";")[0] || "video/webm";
@@ -58,16 +61,25 @@ export const uploadRecordingToStorage = async ({
       bucket: RECORDINGS_BUCKET,
       storagePath,
       applicantAssessmentId,
+      fileSize: buffer.length,
+      contentType,
+      normalizedContentType,
+      errorName: (error as any)?.name,
+      errorMessage: (error as any)?.message,
+      errorStatus: (error as any)?.status,
+      errorStatusCode: (error as any)?.statusCode,
       error
     });
     throw error;
   }
 
-  console.log("Supabase Storage recording upload succeeded:", {
-    bucket: RECORDINGS_BUCKET,
-    storagePath: data.path,
-    applicantAssessmentId
-  });
+    console.log("Supabase Storage recording upload succeeded:", {
+      bucket: RECORDINGS_BUCKET,
+      storagePath: data.path,
+      applicantAssessmentId,
+      fileSize: buffer.length,
+      normalizedContentType
+    });
 
   return data.path;
 };
@@ -278,10 +290,37 @@ export const uploadApplicantRecordingService = async ({ body, params, query: req
   } catch (err) {
     console.error("Recording upload to Supabase Storage failed:", {
       applicantAssessmentId,
+      segmentNumber: normalizedSegmentNumber,
+      clientSegmentId: clientSegmentId ? String(clientSegmentId) : null,
       originalName: req.file.originalname,
+      fileSize: req.file.size,
+      mimetype: req.file.mimetype,
+      normalizedMimetype: (req.file.mimetype || "video/webm").split(";")[0] || "video/webm",
+      errorName: (err as any)?.name,
+      errorMessage: (err as any)?.message,
+      errorStatus: (err as any)?.status,
+      errorStatusCode: (err as any)?.statusCode,
+      stack: (err as any)?.stack,
       error: err
     });
-    return errorResponse(res, "Failed to upload recording", 500);
+    return res.status(500).json({
+      success: false,
+      code: "RECORDING_STORAGE_UPLOAD_FAILED",
+      message: "Failed to upload recording",
+      details: {
+        applicantAssessmentId,
+        segmentNumber: normalizedSegmentNumber,
+        fileSize: req.file.size,
+        mimetype: req.file.mimetype,
+        normalizedMimetype: (req.file.mimetype || "video/webm").split(";")[0] || "video/webm",
+        storageError: {
+          name: (err as any)?.name,
+          message: (err as any)?.message,
+          status: (err as any)?.status,
+          statusCode: (err as any)?.statusCode
+        }
+      }
+    });
   }
 
   const recording = {
