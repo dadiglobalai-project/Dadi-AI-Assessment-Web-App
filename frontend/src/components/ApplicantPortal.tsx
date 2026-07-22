@@ -208,7 +208,12 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
     return Boolean(recorder && recorder.state === 'recording' && isScreenStreamLive());
   };
 
-  const logRecordingEvent = (eventType: string, segmentNumber = currentSegmentNumberRef.current, overrideApplicantAssessmentId?: string) => {
+  const logRecordingEvent = (
+    eventType: string,
+    segmentNumber = currentSegmentNumberRef.current,
+    overrideApplicantAssessmentId?: string,
+    metadata: Record<string, unknown> = {}
+  ) => {
     const applicantAssessmentId = overrideApplicantAssessmentId ?? statusRecordRef.current?.id ?? statusRecord?.id;
     if (!applicantAssessmentId) return;
 
@@ -218,7 +223,8 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       body: JSON.stringify({
         applicantAssessmentId,
         eventType,
-        segmentNumber
+        segmentNumber,
+        metadata
       })
     }).catch(err => {
       console.warn("Recording event log failed:", { eventType, err });
@@ -308,7 +314,9 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       const uploadPromise = uploadCurrentRecording(activeStatusRecord.id, { stopStream: false })
         .catch(err => {
           console.error("Interrupted recording segment upload failed:", err);
-          logRecordingEvent("RECORDING_SEGMENT_UPLOAD_FAILED");
+          logRecordingEvent("RECORDING_SEGMENT_UPLOAD_FAILED", currentSegmentNumberRef.current, undefined, {
+            message: err instanceof Error ? err.message : String(err)
+          });
           setSubmitValidationMessage("Screen sharing stopped. The last recording segment could not upload yet. Please check your connection and try restoring screen sharing.");
           return null;
         });
@@ -445,24 +453,44 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       setUploadedRecordingId(null);
 
       let recorder: MediaRecorder;
+      let selectedMimeType = "browser-default";
 
       const preferredOptions = { mimeType: "video/webm;codecs=vp9,opus" };
 
       if (MediaRecorder.isTypeSupported(preferredOptions.mimeType)) {
         recorder = new MediaRecorder(stream, preferredOptions);
+        selectedMimeType = preferredOptions.mimeType;
       } else if (MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")) {
         recorder = new MediaRecorder(stream, {
           mimeType: "video/webm;codecs=vp8,opus",
         });
+        selectedMimeType = "video/webm;codecs=vp8,opus";
       } else if (MediaRecorder.isTypeSupported("video/webm")) {
         recorder = new MediaRecorder(stream, {
           mimeType: "video/webm",
         });
+        selectedMimeType = "video/webm";
       } else {
         recorder = new MediaRecorder(stream);
       }
 
+      console.log("Recording MIME trace: MediaRecorder created", {
+        applicantAssessmentId: statusRecordRef.current?.id ?? statusRecord?.id ?? null,
+        segmentNumber: currentSegmentNumberRef.current,
+        selectedMimeType,
+        recorderMimeType: recorder.mimeType || null,
+        timestamp: new Date().toISOString()
+      });
+
       recorder.ondataavailable = (event) => {
+        console.log("Recording MIME trace: dataavailable", {
+          applicantAssessmentId: statusRecordRef.current?.id ?? statusRecord?.id ?? null,
+          segmentNumber: currentSegmentNumberRef.current,
+          eventDataType: event.data?.type || null,
+          eventDataSize: event.data?.size ?? 0,
+          recorderMimeType: mediaRecorderMimeTypeRef.current,
+          timestamp: new Date().toISOString()
+        });
         if (event.data && event.data.size > 0) {
           recordedChunks.current.push(event.data);
         }
@@ -493,6 +521,14 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
 
       mediaRecorderRef.current = recorder;
       mediaRecorderMimeTypeRef.current = recorder.mimeType || "video/webm";
+      console.log("Recording MIME trace: MediaRecorder started", {
+        applicantAssessmentId: statusRecordRef.current?.id ?? statusRecord?.id ?? null,
+        segmentNumber: currentSegmentNumberRef.current,
+        recorderState: recorder.state,
+        recorderMimeType: recorder.mimeType || null,
+        storedRecorderMimeType: mediaRecorderMimeTypeRef.current,
+        timestamp: new Date().toISOString()
+      });
       screenStreamRef.current = stream;
       setRecordingActive(recorder.state === 'recording');
       setRecordingStartTime(prev => (options.resetChunks ? Date.now() : prev ?? Date.now()));
@@ -615,12 +651,45 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
     }
 
     const recordingMimeType = mediaRecorderMimeTypeRef.current || 'video/webm';
+    const uploadMimeType = recordingMimeType.split(';')[0] || 'video/webm';
+    const firstChunk = chunksForUpload[0];
+    console.log("Recording MIME trace: before Blob creation", {
+      applicantAssessmentId,
+      segmentNumber,
+      chunkCount: chunksForUpload.length,
+      firstChunkType: firstChunk?.type || null,
+      firstChunkSize: firstChunk?.size ?? 0,
+      recordingMimeType,
+      uploadMimeType,
+      timestamp: new Date().toISOString()
+    });
     const videoBlob = new Blob(chunksForUpload, { type: recordingMimeType });
+    console.log("Recording MIME trace: Blob created", {
+      applicantAssessmentId,
+      segmentNumber,
+      blobConstructor: videoBlob.constructor.name,
+      blobType: videoBlob.type || null,
+      blobSize: videoBlob.size,
+      timestamp: new Date().toISOString()
+    });
     if (videoBlob.size === 0) {
       throw new Error("Screen recording is empty. Please restore screen sharing and try again.");
     }
 
-    const videoFile = new File([videoBlob], `screen-record-${applicantAssessmentId}-segment-${segmentNumber}.webm`, { type: recordingMimeType });
+    const videoFileName = `screen-record-${applicantAssessmentId}-segment-${segmentNumber}.webm`;
+    const videoPayload = typeof File === 'function'
+      ? new File([videoBlob], videoFileName, { type: uploadMimeType })
+      : videoBlob;
+    const videoPayloadIsFile = typeof File === 'function' && videoPayload instanceof File;
+    console.log("Recording MIME trace: File created", {
+      applicantAssessmentId,
+      segmentNumber,
+      fileConstructor: videoPayload.constructor.name,
+      fileType: videoPayload.type || null,
+      fileName: videoPayloadIsFile ? videoPayload.name : videoFileName,
+      fileSize: videoPayload.size,
+      timestamp: new Date().toISOString()
+    });
     console.log("Recording final blob prepared:", {
       applicantAssessmentId,
       segmentNumber,
@@ -628,21 +697,71 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       chunks: chunksForUpload.length
     });
     const formData = new FormData();
-    formData.append('video', videoFile);
+    formData.append('video', videoPayload, videoFileName);
     formData.append('applicantAssessmentId', applicantAssessmentId);
     formData.append('duration', recordingDurationSeconds.toString());
     formData.append('segmentNumber', segmentNumber.toString());
     formData.append('clientSegmentId', clientSegmentId);
     formData.append('segmentStartedAt', new Date(segmentStartedAt).toISOString());
     formData.append('segmentEndedAt', new Date(segmentEndedAt).toISOString());
+    const appendedVideo = formData.get('video');
+    const appendedVideoIsFile = typeof File === 'function' && appendedVideo instanceof File;
+    console.log("Recording MIME trace: FormData ready", {
+      applicantAssessmentId,
+      segmentNumber,
+      videoFieldConstructor: appendedVideo?.constructor?.name ?? null,
+      videoFieldType: appendedVideo instanceof Blob ? appendedVideo.type || null : null,
+      videoFieldSize: appendedVideo instanceof Blob ? appendedVideo.size : null,
+      videoFieldName: appendedVideoIsFile ? appendedVideo.name : videoFileName,
+      filename: videoFileName,
+      fields: {
+        applicantAssessmentId,
+        duration: recordingDurationSeconds.toString(),
+        segmentNumber: segmentNumber.toString(),
+        clientSegmentId,
+        segmentStartedAt: new Date(segmentStartedAt).toISOString(),
+        segmentEndedAt: new Date(segmentEndedAt).toISOString()
+      },
+      timestamp: new Date().toISOString()
+    });
+
+    logRecordingEvent("RECORDING_SEGMENT_UPLOAD_REQUESTED", segmentNumber, applicantAssessmentId, {
+      blobSize: videoBlob.size,
+      chunks: chunksForUpload.length,
+      recordingMimeType,
+      uploadMimeType,
+      blobType: videoBlob.type || null,
+      fileType: videoPayload.type || null,
+      formDataVideoType: appendedVideo instanceof Blob ? appendedVideo.type || null : null,
+      clientSegmentId
+    });
 
     const uploadRes = await fetch(apiUrl('/api/applicant/recording/upload'), {
       method: 'POST',
       body: formData
     });
     const uploadResult = await uploadRes.json();
+    console.log("Recording MIME trace: upload response", {
+      applicantAssessmentId,
+      segmentNumber,
+      httpStatus: uploadRes.status,
+      ok: uploadRes.ok,
+      success: uploadResult?.success ?? null,
+      code: uploadResult?.code ?? null,
+      message: uploadResult?.message ?? null,
+      details: uploadResult?.details ?? null,
+      timestamp: new Date().toISOString()
+    });
 
     if (!uploadRes.ok || !uploadResult.success) {
+      logRecordingEvent("RECORDING_SEGMENT_UPLOAD_FAILED", segmentNumber, applicantAssessmentId, {
+        httpStatus: uploadRes.status,
+        message: uploadResult.message || "Failed to upload screen recording",
+        code: uploadResult.code ?? null,
+        details: uploadResult.details ?? null,
+        blobSize: videoBlob.size,
+        uploadMimeType
+      });
       throw new Error(uploadResult.message || "Failed to upload screen recording. Please try again.");
     }
 
@@ -656,6 +775,11 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       recordingId,
       segmentNumber,
       fileSize: uploadResult.data?.file_size ?? videoBlob.size
+    });
+    logRecordingEvent("RECORDING_SEGMENT_UPLOAD_CONFIRMED", segmentNumber, applicantAssessmentId, {
+      recordingId,
+      fileSize: uploadResult.data?.file_size ?? videoBlob.size,
+      storagePath: uploadResult.data?.file_url ?? null
     });
 
     setUploadedRecordingId(recordingId);
