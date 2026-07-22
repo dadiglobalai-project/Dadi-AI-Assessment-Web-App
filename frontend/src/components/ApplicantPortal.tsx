@@ -32,6 +32,7 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
   const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaRecorderMimeTypeRef = useRef("video/webm");
   const testActiveRef = useRef(false);
   const isSubmittingRef = useRef(false);
   const statusRecordRef = useRef<any | null>(null);
@@ -487,9 +488,10 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
         };
       }
 
-      recorder.start(5000);
+      recorder.start(1000);
 
       mediaRecorderRef.current = recorder;
+      mediaRecorderMimeTypeRef.current = recorder.mimeType || "video/webm";
       screenStreamRef.current = stream;
       setRecordingActive(recorder.state === 'recording');
       setRecordingStartTime(prev => (options.resetChunks ? Date.now() : prev ?? Date.now()));
@@ -528,15 +530,33 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
 
   const stopMediaRecorderAndCollectChunks = async () => {
     const recorder = mediaRecorderRef.current;
-    if (!recorder || recorder.state === 'inactive') {
+    if (!recorder) {
+      return;
+    }
+
+    if (recorder.state === 'inactive') {
+      mediaRecorderRef.current = null;
+      await new Promise(resolve => setTimeout(resolve, 250));
       return;
     }
 
     await new Promise<void>((resolve) => {
       const previousOnStop = recorder.onstop;
+      let resolved = false;
+      const finish = () => {
+        if (resolved) return;
+        resolved = true;
+        setTimeout(resolve, 250);
+      };
+
+      const stopTimeout = window.setTimeout(finish, 3000);
+      const finishWithTimeoutClear = () => {
+        window.clearTimeout(stopTimeout);
+        finish();
+      };
       recorder.onstop = (event) => {
         previousOnStop?.call(recorder, event);
-        resolve();
+        finishWithTimeoutClear();
       };
 
       try {
@@ -547,7 +567,12 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
         console.warn("Unable to request final recording data:", err);
       }
 
-      recorder.stop();
+      try {
+        recorder.stop();
+      } catch (err) {
+        console.warn("Unable to stop MediaRecorder cleanly:", err);
+        finish();
+      }
     });
 
     mediaRecorderRef.current = null;
@@ -578,12 +603,13 @@ export default function ApplicantPortal({ applicantUser, onLogout }: ApplicantPo
       throw new Error("Screen recording is missing. Please restore screen sharing and try again.");
     }
 
-    const videoBlob = new Blob(recordedChunks.current, { type: 'video/webm' });
+    const recordingMimeType = mediaRecorderMimeTypeRef.current || 'video/webm';
+    const videoBlob = new Blob(recordedChunks.current, { type: recordingMimeType });
     if (videoBlob.size === 0) {
       throw new Error("Screen recording is empty. Please restore screen sharing and try again.");
     }
 
-    const videoFile = new File([videoBlob], `screen-record-${applicantAssessmentId}-segment-${segmentNumber}.webm`, { type: 'video/webm' });
+    const videoFile = new File([videoBlob], `screen-record-${applicantAssessmentId}-segment-${segmentNumber}.webm`, { type: recordingMimeType });
     console.log("Recording final blob prepared:", {
       applicantAssessmentId,
       segmentNumber,
